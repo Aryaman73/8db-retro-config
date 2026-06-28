@@ -49,11 +49,19 @@ gatekeeps it out of an allowlist.
 - **Disproven:** sending a MAP buffer of concatenated 3-byte usages (e.g.
   `07e300 070004` = GUI+A) does NOT chord — the keyboard honours only the FIRST
   usage and ignores the rest (verified: A Super emitted ⌘ only, not ⌘+A).
-- **Next:** capture the official software programming a macro via **USBPcap +
-  Wireshark** to find the real encoding (likely a count/modifier byte or a
-  distinct macro command). Needs a Windows machine/VM (user has an old one).
-- Interim: single-key works (A Super currently = bare F13, which serves the same
-  hotkey purpose without needing the ⌘ modifier).
+- **CONFIRMED chords are real:** hardware Fast-Key-Mapping programmed A Super =
+  Win+P and it physically fires ⌘+P. So the firmware fully supports modifier+key
+  on the Super buttons — the goal is achievable.
+- **But the fast-key store is unreadable via our channel:** before/after diff after
+  hardware-programming showed ZERO change across all known reads AND a safe scan of
+  the entire 0x8x get/status family. The store sits outside the 0x52/0x54 channel
+  (candidates: report-ID 0x51/0xB1 sub-protocol, or commands outside 0x8x).
+- **Next options to read/write it in software:** (a) probe the 0x51/0xB1 report
+  channel, (b) wider command scan (higher risk — must still exclude 0x70/0x76/0xfa/
+  0xc1-c4), or (c) the Windows USBPcap capture (definitive).
+- **Pragmatic off-ramp (no RE needed):** hardware Fast-Key-Mapping already writes
+  arbitrary chords to the Super buttons. For the user's Wispr Flow need, just
+  hardware-map a Super button to an unused "hyper" chord and bind the app to it.
 
 ## Phase 4 — Electron GUI
 - Visual keyboard layout → click key → remap; Super Button panel; profiles.
