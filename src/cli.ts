@@ -1,7 +1,30 @@
 // Minimal CLI. Run with Node 26 (native TS): `node src/cli.ts <command>`
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { findConfigDevice } from './device.ts';
 import { Keyboard } from './client.ts';
 import { HWKEY, USAGE } from './protocol/keys.ts';
+
+const hex = (a: number[]) => Buffer.from(a).toString('hex');
+
+function cmdDump(label: string): void {
+  const probeKeys = ['supera', 'superb', 'a', 'rightctrl', 'rightalt'];
+  const kb = Keyboard.open();
+  const lines: string[] = [];
+  const out = (s: string) => {
+    lines.push(s);
+    console.log(s);
+  };
+  try {
+    out(`# dump "${label}"  profile=${kb.getProfileName() ?? '(default)'}`);
+    kb.rawMappedFrames().forEach((f, i) => out(`mapped_frame[${i}]: ${hex(f)}`));
+    for (const k of probeKeys) out(`mapping ${k}(0x${HWKEY[k].toString(16)}): ${hex(kb.rawKeyMapping(k))}`);
+  } finally {
+    kb.close();
+  }
+  mkdirSync('captures', { recursive: true });
+  writeFileSync(`captures/${label}.txt`, lines.join('\n') + '\n');
+  console.log(`\nSaved -> captures/${label}.txt`);
+}
 
 function cmdStatus(): void {
   const info = findConfigDevice();
@@ -96,6 +119,9 @@ function main(): void {
       break;
     case 'list-keys':
       cmdListKeys();
+      break;
+    case 'dump':
+      cmdDump(a || 'dump');
       break;
     case 'get':
       if (!a) return void console.log('Usage: get <hardware-key>');

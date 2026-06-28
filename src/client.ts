@@ -127,6 +127,29 @@ export class Keyboard {
     return USAGE_BY_CODE[code] ?? `HID ${code.toString(16).padStart(6, '0')}`;
   }
 
+  /** Diagnostic: FULL raw MAPPING_GET response for a key (to inspect chords). */
+  rawKeyMapping(hwName: string): number[] {
+    const hw = HWKEY[hwName];
+    if (hw === undefined) throw new Error(`Unknown hardware key: ${hwName}`);
+    this.handshake();
+    this.write([...MAPPING_GET, hw]);
+    return this.read();
+  }
+
+  /** Diagnostic: all raw PROFILE_GET_MAPPED frames. */
+  rawMappedFrames(): number[][] {
+    this.handshake();
+    this.write(PROFILE_GET_MAPPED);
+    const frames: number[][] = [];
+    let r = this.read();
+    frames.push(r);
+    while (r.length > 0 && r[r.length - 1] === 0x01) {
+      r = this.read();
+      frames.push(r);
+    }
+    return frames;
+  }
+
   // --- WRITES (config-modifying; reverse-engineered, exercise deliberately) ---
 
   /**
