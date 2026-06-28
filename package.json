@@ -1,0 +1,22 @@
+{
+  "name": "8bitdo-kbd",
+  "version": "0.0.1",
+  "description": "Cross-platform configurator for 8BitDo Retro Mechanical Keyboards (incl. N Edition) over USB HID.",
+  "type": "module",
+  "bin": {
+    "8bdkbd": "src/cli.ts"
+  },
+  "scripts": {
+    "status": "node src/cli.ts status",
+    "list-keys": "node src/cli.ts list-keys",
+    "probe": "node scripts/probe.cjs",
+    "gen-keys": "node scripts/gen-keys.cjs"
+  },
+  "engines": {
+    "node": ">=23"
+  },
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "node-hid": "^3.3.0"
+  }
+}
