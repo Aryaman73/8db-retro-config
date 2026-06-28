@@ -648,12 +648,17 @@ export const USAGE: Record<string, { code: number; desc: string }> = {
   }
 };
 
+// Reverse lookups use FIRST-wins so aliased codes resolve to the friendly,
+// first-defined name (e.g. 0x6c -> "superb" not "rightmeta", 0x6d -> "supera").
+
 /** Reverse lookup: hardware key code -> name. */
-export const HWKEY_BY_CODE: Record<number, string> = Object.fromEntries(
-  Object.entries(HWKEY).map(([name, code]) => [code, name]),
+export const HWKEY_BY_CODE: Record<number, string> = Object.entries(HWKEY).reduce<Record<number, string>>(
+  (acc, [name, code]) => (code in acc ? acc : ((acc[code] = name), acc)),
+  {},
 );
 
 /** Reverse lookup: HID usage code -> name. */
-export const USAGE_BY_CODE: Record<number, string> = Object.fromEntries(
-  Object.entries(USAGE).map(([name, v]) => [v.code, name]),
+export const USAGE_BY_CODE: Record<number, string> = Object.entries(USAGE).reduce<Record<number, string>>(
+  (acc, [name, v]) => (v.code in acc ? acc : ((acc[v.code] = name), acc)),
+  {},
 );

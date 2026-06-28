@@ -129,16 +129,31 @@ export class Keyboard {
 
   // --- WRITES (config-modifying; reverse-engineered, exercise deliberately) ---
 
-  /** Remap a hardware key to a HID usage (3-byte big-endian code). */
-  mapHidUsage(hwName: string, usageCode: number): void {
+  /**
+   * Remap a hardware key to a raw usage buffer (1..24 bytes). A single key is
+   * 3 bytes (e.g. 07 00 68 = F13). Multiple concatenated 3-byte usages are the
+   * hypothesised macro/chord encoding (e.g. 07 e3 00 | 07 00 68 = GUI + F13).
+   */
+  mapRawUsage(hwName: string, usageBytes: number[]): void {
     const hw = HWKEY[hwName];
     if (hw === undefined) throw new Error(`Unknown hardware key: ${hwName}`);
-    const usageBytes = [(usageCode >> 16) & 0xff, (usageCode >> 8) & 0xff, usageCode & 0xff];
+    if (usageBytes.length < 1 || usageBytes.length > 24) {
+      throw new Error('Usage buffer must be 1-24 bytes.');
+    }
     this.handshake();
     this.write([...MAP, hw, ...usageBytes]);
     this.readExpect(OK);
     this.write(MAP_DONE);
     this.readExpect(OK);
+  }
+
+  /** Remap a hardware key to a single 3-byte HID usage code. */
+  mapHidUsage(hwName: string, usageCode: number): void {
+    this.mapRawUsage(hwName, [
+      (usageCode >> 16) & 0xff,
+      (usageCode >> 8) & 0xff,
+      usageCode & 0xff,
+    ]);
   }
 
   /** Remap a hardware key to another key by its USAGE name (e.g. "esc"). */

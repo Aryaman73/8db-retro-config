@@ -50,9 +50,13 @@ function cmdMap(hwKey: string, target: string): void {
 function cmdMapHid(hwKey: string, hex: string): void {
   const kb = Keyboard.open();
   try {
-    kb.mapHidUsage(hwKey, parseInt(hex, 16));
-    console.log(`Mapped ${hwKey} -> HID ${hex}. Verifying...`);
-    console.log(`${hwKey} now reads: ${kb.getKeyMapping(hwKey)}`);
+    const clean = hex.replace(/[\s:]/g, '');
+    if (clean.length % 2 !== 0) throw new Error(`Hex must be whole bytes: ${hex}`);
+    const bytes = clean.match(/../g)?.map((h) => parseInt(h, 16)) ?? [];
+    kb.mapRawUsage(hwKey, bytes);
+    console.log(`Mapped ${hwKey} -> HID ${clean} (${bytes.length} byte(s)).`);
+    if (bytes.length === 3) console.log(`${hwKey} now reads: ${kb.getKeyMapping(hwKey)}`);
+    else console.log('(multi-usage buffer; read-back only shows the first 3 bytes — verify physically)');
   } finally {
     kb.close();
   }
