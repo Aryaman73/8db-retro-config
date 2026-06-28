@@ -45,6 +45,36 @@ function cmdStatus(): void {
   }
 }
 
+// Read-only scan of the 0x8x get/status command family, with arg variants for
+// the Super keys. EXCLUDES every known mutating command (0x70 del/rename, 0x76
+// attn/done, 0xfa map, 0xc1-c4 firmware) — only safe queries are sent.
+function cmdScan(label: string): void {
+  const SAFE_CMDS = [0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f];
+  const ARGS: Array<{ tag: string; arg: number[] }> = [
+    { tag: 'none', arg: [] },
+    { tag: 'superA', arg: [0x6d] },
+    { tag: 'superB', arg: [0x6c] },
+  ];
+  const kb = Keyboard.open();
+  const lines: string[] = [];
+  const out = (s: string) => { lines.push(s); console.log(s); };
+  try {
+    out(`# scan "${label}"`);
+    for (const cmd of SAFE_CMDS) {
+      for (const { tag, arg } of ARGS) {
+        const resp = kb.probe([0x52, cmd, ...arg]);
+        const nonEmpty = resp.some((b) => b !== 0);
+        out(`cmd 0x${cmd.toString(16)} arg=${tag.padEnd(6)} ${nonEmpty ? hex(resp) : '(no response / all-zero)'}`);
+      }
+    }
+  } finally {
+    kb.close();
+  }
+  mkdirSync('captures', { recursive: true });
+  writeFileSync(`captures/${label}.txt`, lines.join('\n') + '\n');
+  console.log(`\nSaved -> captures/${label}.txt`);
+}
+
 function cmdListKeys(): void {
   console.log('Hardware keys:\n  ' + Object.keys(HWKEY).join(' '));
   console.log('\nMappable target keys:\n  ' + Object.keys(USAGE).join(' '));
@@ -122,6 +152,9 @@ function main(): void {
       break;
     case 'dump':
       cmdDump(a || 'dump');
+      break;
+    case 'scan':
+      cmdScan(a || 'scan');
       break;
     case 'get':
       if (!a) return void console.log('Usage: get <hardware-key>');

@@ -71,6 +71,20 @@ export class Keyboard {
     return r;
   }
 
+  /**
+   * Diagnostic: send a single query (report-ID-led) after a handshake and
+   * return the raw response. CALLER MUST pass only safe, non-mutating commands.
+   */
+  probe(cmd: number[], timeoutMs = 300): number[] {
+    this.handshake();
+    this.write(cmd);
+    try {
+      return this.read(timeoutMs);
+    } catch {
+      return [];
+    }
+  }
+
   /** ATTN handshake; the device replies READY, which we consume. */
   private handshake(): void {
     this.write(ATTN);
