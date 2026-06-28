@@ -115,6 +115,17 @@ function cmdMapHid(hwKey: string, hex: string): void {
   }
 }
 
+function cmdMapCombo(hwKey: string, mod: string, key: string): void {
+  const kb = Keyboard.open();
+  try {
+    kb.mapChord(hwKey, mod, key);
+    console.log(`Mapped ${hwKey} -> ${mod}+${key}.`);
+    console.log(`Remember: profile create + Profile LED on for it to take effect.`);
+  } finally {
+    kb.close();
+  }
+}
+
 function cmdProfileCreate(name: string): void {
   const kb = Keyboard.open();
   try {
@@ -168,6 +179,12 @@ function main(): void {
       if (!a || !b) return void console.log('Usage: map-hid <hardware-key> <hex-usage>');
       cmdMapHid(a, b);
       break;
+    case 'map-combo': {
+      const c = process.argv[5];
+      if (!a || !b || !c) return void console.log('Usage: map-combo <hardware-key> <modifier> <key>  (e.g. map-combo supera cmd f13)');
+      cmdMapCombo(a, b, c);
+      break;
+    }
     default:
       console.log('Usage: node src/cli.ts <status|list-keys|get|map|map-hid|profile>');
   }

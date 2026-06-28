@@ -42,7 +42,16 @@ gatekeeps it out of an allowlist.
 - Golden-byte tests: capture exact command bytes and assert the core reproduces them.
 - Robust read timing / retries; profile create/delete.
 
-## Phase 3 — Macros / chords (new protocol work)
+## Phase 3 — Macros / chords  ✅ SINGLE-MODIFIER CHORDS SOLVED
+- **CRACKED (no Windows capture needed):** the existing 3-byte mapping value is
+  `07 <modifier-usage> <key-usage>`. A plain key leaves the modifier byte 00
+  (`07 00 04` = a); a plain modifier leaves the key byte 00 (`07 e2 00` = LAlt);
+  a CHORD fills both (`07 e3 76` = ⌘+F13). Verified on hardware: superb=`07 e3 04`
+  physically fires ⌘+A. Implemented as `map-combo <key> <mod> <key>` / `mapChord()`.
+- Open: multi-modifier chords (e.g. ⌃⌥⌘ hyper) — only one modifier byte slot is
+  known; may need the 12-byte buffer (`0x0c` header) or extra slots. Single
+  modifier+key covers the Wispr use case.
+- Historic note (now moot for single-mod chords):
 - **Finding:** the Super Buttons themselves (`supera` 0x6d, `superb` 0x6c) ARE
   remappable via the normal single-key MAP path — no special protocol needed for
   single-key assignments. What's NOT solved is **chords/macros** (e.g. ⌘+F13).
@@ -74,6 +83,6 @@ gatekeeps it out of an allowlist.
 ## Risks
 1. ~~macOS HID access~~ — RESOLVED (Phase 0).
 2. ~~N Edition protocol == standard RMK~~ — RESOLVED (Phase 0).
-3. ~~Super Buttons unreachable~~ — single-key maps work now; only chords/macros
-   need the Windows capture — Phase 3.
+3. ~~Super Buttons / chords unreachable~~ — RESOLVED. Single-key AND single-modifier
+   chords work via the profile MAP command (`07 <mod> <key>`). No capture needed.
 4. TS port fidelity — mitigated by golden-byte tests (Phase 2).

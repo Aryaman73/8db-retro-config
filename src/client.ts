@@ -24,6 +24,14 @@ function startsWith(buf: number[], prefix: number[]): boolean {
   return true;
 }
 
+/** Mac-friendly modifier aliases -> USAGE table name. */
+const MOD_ALIAS: Record<string, string> = {
+  cmd: 'leftmeta', command: 'leftmeta', win: 'leftmeta', gui: 'leftmeta',
+  opt: 'leftalt', option: 'leftalt', alt: 'leftalt',
+  ctrl: 'leftctrl', control: 'leftctrl', shift: 'leftshift',
+  rcmd: 'rightmeta', ropt: 'rightalt', rctrl: 'rightctrl', rshift: 'rightshift',
+};
+
 /**
  * Userland client for the 8BitDo Retro Mechanical Keyboard config protocol.
  * READ methods (status/profile/mappings) are hardware-validated on macOS.
@@ -198,6 +206,24 @@ export class Keyboard {
     const u = USAGE[targetName];
     if (u === undefined) throw new Error(`Unknown target key: ${targetName}`);
     this.mapHidUsage(hwName, u.code);
+  }
+
+  /**
+   * Remap a hardware key to a modifier+key CHORD (e.g. cmd + f13).
+   * Encoding discovered empirically: the 3-byte mapping value is
+   * `07 <modifier-usage> <key-usage>` — the modifier byte slot that a plain key
+   * leaves as 00, and a plain modifier fills while leaving the key slot 00.
+   */
+  mapChord(hwName: string, modName: string, keyName: string): void {
+    const mod = USAGE[MOD_ALIAS[modName] ?? modName];
+    const key = USAGE[keyName];
+    if (!mod) throw new Error(`Unknown modifier: ${modName} (try cmd/opt/ctrl/shift)`);
+    if (!key) throw new Error(`Unknown key: ${keyName}`);
+    const modByte = (mod.code >> 8) & 0xff; // e.g. 0xe3 for Left GUI
+    const keyByte = key.code & 0xff; // e.g. 0x76 for F13
+    if (modByte < 0xe0 || modByte > 0xe7) throw new Error(`${modName} is not a modifier key`);
+    if (((key.code >> 8) & 0xff) !== 0x00) throw new Error(`${keyName} is itself a modifier; pick a normal key`);
+    this.mapRawUsage(hwName, [0x07, modByte, keyByte]);
   }
 
   /**
