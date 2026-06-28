@@ -42,9 +42,18 @@ gatekeeps it out of an allowlist.
 - Golden-byte tests: capture exact command bytes and assert the core reproduces them.
 - Robust read timing / retries; profile create/delete.
 
-## Phase 3 — Dual Super Buttons (new protocol work)
-- Capture official software programming the Super Buttons via **USBPcap + Wireshark**.
-- Dependency: needs a Windows machine/VM (user has an old one). Decode + add to core.
+## Phase 3 — Macros / chords (new protocol work)
+- **Finding:** the Super Buttons themselves (`supera` 0x6d, `superb` 0x6c) ARE
+  remappable via the normal single-key MAP path — no special protocol needed for
+  single-key assignments. What's NOT solved is **chords/macros** (e.g. ⌘+F13).
+- **Disproven:** sending a MAP buffer of concatenated 3-byte usages (e.g.
+  `07e300 070004` = GUI+A) does NOT chord — the keyboard honours only the FIRST
+  usage and ignores the rest (verified: A Super emitted ⌘ only, not ⌘+A).
+- **Next:** capture the official software programming a macro via **USBPcap +
+  Wireshark** to find the real encoding (likely a count/modifier byte or a
+  distinct macro command). Needs a Windows machine/VM (user has an old one).
+- Interim: single-key works (A Super currently = bare F13, which serves the same
+  hotkey purpose without needing the ⌘ modifier).
 
 ## Phase 4 — Electron GUI
 - Visual keyboard layout → click key → remap; Super Button panel; profiles.
@@ -57,5 +66,6 @@ gatekeeps it out of an allowlist.
 ## Risks
 1. ~~macOS HID access~~ — RESOLVED (Phase 0).
 2. ~~N Edition protocol == standard RMK~~ — RESOLVED (Phase 0).
-3. Super Button capture needs Windows/VM — Phase 3.
+3. ~~Super Buttons unreachable~~ — single-key maps work now; only chords/macros
+   need the Windows capture — Phase 3.
 4. TS port fidelity — mitigated by golden-byte tests (Phase 2).
