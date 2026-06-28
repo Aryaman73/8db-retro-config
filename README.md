@@ -5,9 +5,8 @@ Cross-platform configurator for **8BitDo Retro Mechanical Keyboards** — includ
 identical hardware. Talks to the keyboard's vendor HID interface directly from
 userland (no Wine, no kernel extension, no entitlement).
 
-> Status: **early**. Phase 0 (recon) is complete and validated on real hardware on
-> macOS. Reading config works; the remap *write* path is implemented but not yet
-> hardware-tested. See [PLAN.md](./PLAN.md).
+> Status: **working MVP**. Validated end-to-end on real hardware (N Edition, macOS):
+> reading config and remapping keys both work. See [PLAN.md](./PLAN.md).
 
 ## Requirements
 - Node **≥ 23** (runs the TypeScript sources natively; tested on Node 26).
@@ -21,12 +20,24 @@ node src/cli.ts list-keys   # list hardware keys and mappable targets
 node scripts/probe.cjs      # low-level: enumerate HID interfaces + open test
 ```
 
+Remapping a key (3 steps — all three are required):
+```sh
+node src/cli.ts map capslock esc   # 1. store the mapping
+node src/cli.ts profile create main # 2. name the profile -> persists+activates on the keyboard
+#                                     3. press the keyboard's Profile (heart) button so its LED is ON
+```
+**Gotcha:** an *unnamed* profile lives only on the PC, and even a named profile only
+applies while the **Profile button toggle is ON** (LED lit). Press it again to fall
+back to the factory-default layout. Revert a map with `map capslock capslock`, or wipe
+the profile with `profile delete`.
+
 Example `status` output:
 ```
 8BitDo connected: yes
 Config interface: 8BitDo Retro Keyboard pid=0x5200 iface=2 usagePage=0x8c
-Profile name: (none / default)
-Remapped keys (0): (none)
+Profile name: main
+Remapped keys (1): capslock
+    capslock -> esc
 ```
 
 ## How it works
