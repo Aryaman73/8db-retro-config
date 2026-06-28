@@ -27,8 +27,39 @@ function cmdListKeys(): void {
   console.log('\nMappable target keys:\n  ' + Object.keys(USAGE).join(' '));
 }
 
+function cmdGet(hwKey: string): void {
+  const kb = Keyboard.open();
+  try {
+    console.log(`${hwKey} -> ${kb.getKeyMapping(hwKey)}`);
+  } finally {
+    kb.close();
+  }
+}
+
+function cmdMap(hwKey: string, target: string): void {
+  const kb = Keyboard.open();
+  try {
+    kb.mapKey(hwKey, target);
+    console.log(`Mapped ${hwKey} -> ${target}. Verifying...`);
+    console.log(`${hwKey} now reads: ${kb.getKeyMapping(hwKey)}`);
+  } finally {
+    kb.close();
+  }
+}
+
+function cmdMapHid(hwKey: string, hex: string): void {
+  const kb = Keyboard.open();
+  try {
+    kb.mapHidUsage(hwKey, parseInt(hex, 16));
+    console.log(`Mapped ${hwKey} -> HID ${hex}. Verifying...`);
+    console.log(`${hwKey} now reads: ${kb.getKeyMapping(hwKey)}`);
+  } finally {
+    kb.close();
+  }
+}
+
 function main(): void {
-  const cmd = process.argv[2];
+  const [cmd, a, b] = process.argv.slice(2);
   switch (cmd) {
     case 'status':
       cmdStatus();
@@ -36,9 +67,20 @@ function main(): void {
     case 'list-keys':
       cmdListKeys();
       break;
+    case 'get':
+      if (!a) return void console.log('Usage: get <hardware-key>');
+      cmdGet(a);
+      break;
+    case 'map':
+      if (!a || !b) return void console.log('Usage: map <hardware-key> <target-key>');
+      cmdMap(a, b);
+      break;
+    case 'map-hid':
+      if (!a || !b) return void console.log('Usage: map-hid <hardware-key> <hex-usage>');
+      cmdMapHid(a, b);
+      break;
     default:
-      console.log('Usage: node src/cli.ts <status|list-keys>');
-      console.log('  (map/map-hid are implemented in client.ts but not yet wired to the CLI — Phase 1)');
+      console.log('Usage: node src/cli.ts <status|list-keys|get|map|map-hid>');
   }
 }
 
