@@ -12,6 +12,8 @@ import {
   PROFILE_NONE,
   PROFILE_GET_MAPPED,
   PROFILE_MAPPED,
+  PROFILE_RENAME,
+  PROFILE_DELETE,
   MAPPING_GET,
   MAPPING,
 } from './protocol/consts.ts';
@@ -144,5 +146,26 @@ export class Keyboard {
     const u = USAGE[targetName];
     if (u === undefined) throw new Error(`Unknown target key: ${targetName}`);
     this.mapHidUsage(hwName, u.code);
+  }
+
+  /**
+   * Name the current profile. This is what PERSISTS and ACTIVATES the stored
+   * maps on the keyboard itself — an unnamed profile only exists on the PC, so
+   * maps don't take physical effect until the profile is created/named.
+   */
+  createProfile(name: string): void {
+    if (name.length < 1 || name.length > 24) {
+      throw new Error('Profile name must be 1-24 characters.');
+    }
+    const nameBytes = Array.from(Buffer.from(name, 'utf16le').swap16());
+    this.handshake();
+    this.write([...PROFILE_RENAME, ...nameBytes]);
+    this.readExpect(OK);
+  }
+
+  /** Delete the current profile, clearing its maps (reverts to default). */
+  deleteProfile(): void {
+    this.write(PROFILE_DELETE);
+    this.readExpect(OK);
   }
 }

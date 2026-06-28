@@ -58,9 +58,35 @@ function cmdMapHid(hwKey: string, hex: string): void {
   }
 }
 
+function cmdProfileCreate(name: string): void {
+  const kb = Keyboard.open();
+  try {
+    kb.createProfile(name);
+    console.log(`Created/activated profile "${name}". Stored maps are now live on the keyboard.`);
+    console.log('Profile name now reads:', kb.getProfileName());
+  } finally {
+    kb.close();
+  }
+}
+
+function cmdProfileDelete(): void {
+  const kb = Keyboard.open();
+  try {
+    kb.deleteProfile();
+    console.log('Deleted profile. Maps cleared; keyboard reverts to default.');
+  } finally {
+    kb.close();
+  }
+}
+
 function main(): void {
   const [cmd, a, b] = process.argv.slice(2);
   switch (cmd) {
+    case 'profile':
+      if (a === 'create' && b) cmdProfileCreate(b);
+      else if (a === 'delete') cmdProfileDelete();
+      else console.log('Usage: profile create <name> | profile delete');
+      break;
     case 'status':
       cmdStatus();
       break;
@@ -80,7 +106,7 @@ function main(): void {
       cmdMapHid(a, b);
       break;
     default:
-      console.log('Usage: node src/cli.ts <status|list-keys|get|map|map-hid>');
+      console.log('Usage: node src/cli.ts <status|list-keys|get|map|map-hid|profile>');
   }
 }
 
