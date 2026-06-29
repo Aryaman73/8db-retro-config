@@ -367,51 +367,51 @@ export const USAGE: Record<string, { code: number; desc: string }> = {
     "desc": "Keyboard F12"
   },
   "f13": {
-    "code": 458870,
+    "code": 458856,
     "desc": "Keyboard F13"
   },
   "f14": {
-    "code": 458871,
+    "code": 458857,
     "desc": "Keyboard F14"
   },
   "f15": {
-    "code": 458872,
+    "code": 458858,
     "desc": "Keyboard F15"
   },
   "f16": {
-    "code": 458873,
+    "code": 458859,
     "desc": "Keyboard F16"
   },
   "f17": {
-    "code": 458874,
+    "code": 458860,
     "desc": "Keyboard F17"
   },
   "f18": {
-    "code": 458875,
+    "code": 458861,
     "desc": "Keyboard F18"
   },
   "f19": {
-    "code": 458876,
+    "code": 458862,
     "desc": "Keyboard F19"
   },
   "f20": {
-    "code": 458877,
+    "code": 458863,
     "desc": "Keyboard F20"
   },
   "f21": {
-    "code": 458878,
+    "code": 458864,
     "desc": "Keyboard F21"
   },
   "f22": {
-    "code": 458879,
+    "code": 458865,
     "desc": "Keyboard F22"
   },
   "f23": {
-    "code": 458880,
+    "code": 458866,
     "desc": "Keyboard F23"
   },
   "f24": {
-    "code": 458881,
+    "code": 458867,
     "desc": "Keyboard F24"
   },
   "sysrq": {

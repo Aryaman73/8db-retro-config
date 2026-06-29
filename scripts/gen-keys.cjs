@@ -18,6 +18,14 @@ for (const m of usageBlock.matchAll(/"([^"]+)"\s*:\s*\(\s*(0x[0-9a-fA-F]+)\s*,\s
   usage[m[1]] = { code: parseInt(m[2], 16), desc: m[3] };
 }
 
+// CORRECTIONS to upstream keys.py: its F13-F24 usages are wrong (off by +14,
+// e.g. f13 listed as 0x070076 which is actually "Keyboard Menu"). Standard HID
+// F13-F24 = 0x68-0x73. Verified on hardware: cmd+0x68 registers as Cmd+F13.
+for (let i = 0; i <= 11; i++) {
+  const name = `f${13 + i}`;
+  if (usage[name]) usage[name] = { code: 0x070068 + i, desc: `Keyboard F${13 + i}` };
+}
+
 const out = `// AUTO-GENERATED from reference/keys.py by scripts/gen-keys.js. Do not edit by hand.
 // Source protocol/key tables: github.com/goncalor/8bitdo-kbd-mapper (see NOTICE).
 
