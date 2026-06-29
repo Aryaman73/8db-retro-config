@@ -72,6 +72,23 @@ gatekeeps it out of an allowlist.
   arbitrary chords to the Super buttons. For the user's Wispr Flow need, just
   hardware-map a Super button to an unused "hyper" chord and bind the app to it.
 
+## Phase 3.5 — External Super Buttons (3.5mm jack)  🔬 PROTOCOL DECODED, TRANSPORT OPEN
+- The big circular A/B accessories are a **separate, UUID-addressed store** with its
+  own command family — NOT the on-board `supera`/`superb` keys, and NOT on the legacy
+  `0x52` channel (hence invisible to every scan). They are live only in the default
+  profile (fast-key store).
+- **Reverse-engineered the full protocol** from the canonical Windows app (8BitDo
+  Ultimate Software V2 V1.33, .NET + native `8BitDoAdvance.dll`), decompiled on macOS:
+  commands `0x11` read / `0x12` write / `0x15` delete / `0x17` recognize / `0x19` index;
+  packet `[id,0x04,cmd,sub,len,Σdata&0xff,offset(4),data]`; `PAT_KEYBOARD_MAPPING_INFO`
+  (uuid + 4× `{keyCode,mapping,type}`), 8 accessories. **See `SUPER-BUTTON-PROTOCOL.md`.**
+- **Open:** the Advance protocol uses **64-byte reports on report ID `0x81`**, but the
+  macOS-visible `0x8c` interface only declares 32-byte reports (`0x51`/`0x52`/`0xb2`).
+  `0x81` isn't deliverable as-is and the 32-byte channels stay silent. The definitive
+  finish is a brief **Windows USB capture** (we now know exactly what to look for).
+- **Decision (current):** documented + parked; use the on-board Super A (⌘+F13) for
+  Wispr. Confirmed keyboard FW = `1.7.7r` (legacy cmd `0x04` = get version).
+
 ## Phase 4 — Electron GUI
 - Visual keyboard layout → click key → remap; Super Button panel; profiles.
 - Main process owns `node-hid`; renderer = React/Svelte. Handle macOS Input Monitoring UX.

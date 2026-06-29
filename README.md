@@ -1,8 +1,7 @@
-# 8bitdo-kbd
+# Reverse-engineered 8BitDo keyboard configurator
 
 Cross-platform configurator for **8BitDo Retro Mechanical Keyboards** — including the
-**N Edition**, which the official macOS software refuses to support despite being
-identical hardware. Talks to the keyboard's vendor HID interface directly from
+**N Edition**. Talks to the keyboard's vendor HID interface directly from
 userland (no Wine, no kernel extension, no entitlement).
 
 > Status: **working MVP**. Validated end-to-end on real hardware (N Edition, macOS):
