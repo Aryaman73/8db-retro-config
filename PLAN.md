@@ -46,7 +46,7 @@ gatekeeps it out of an allowlist.
 - **CRACKED (no Windows capture needed):** the existing 3-byte mapping value is
   `07 <modifier-usage> <key-usage>`. A plain key leaves the modifier byte 00
   (`07 00 04` = a); a plain modifier leaves the key byte 00 (`07 e2 00` = LAlt);
-  a CHORD fills both (`07 e3 76` = ⌘+F13). Verified on hardware: superb=`07 e3 04`
+  a CHORD fills both (`07 e3 68` = ⌘+F13). Verified on hardware: superb=`07 e3 04`
   physically fires ⌘+A. Implemented as `map-combo <key> <mod> <key>` / `mapChord()`.
 - Open: multi-modifier chords (e.g. ⌃⌥⌘ hyper) — only one modifier byte slot is
   known; may need the 12-byte buffer (`0x0c` header) or extra slots. Single
