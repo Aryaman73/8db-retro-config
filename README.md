@@ -39,6 +39,70 @@ Remapped keys (1): capslock
     capslock -> esc
 ```
 
+## Examples / recipes
+
+Every recipe below still needs the same final two steps as above: name a profile
+(`profile create <name>`) and toggle the **Profile (heart) button LED ON**. They're
+omitted from each snippet for brevity.
+
+Inspect first, then map:
+```sh
+node src/cli.ts list-keys          # what can I map FROM and TO?
+node src/cli.ts get capslock       # what is one key currently mapped to?
+```
+
+### Map a key to a modifier + key chord — e.g. Super A → ⌘+F13
+This is the marquee use case: the on-board **Super A** key (`supera`) becomes a
+single press that emits **⌘+F13**, a chord nothing else uses — perfect as a global
+hotkey for dictation (Wispr Flow), Raycast, an Automator/Shortcuts trigger, etc. No
+Karabiner, all firmware-side.
+```sh
+node src/cli.ts map-combo supera cmd f13     # Super A  -> ⌘+F13
+node src/cli.ts profile create main          # then: persist + press the Profile button
+```
+More chord examples:
+```sh
+node src/cli.ts map-combo superb ctrl space  # Super B -> ⌃Space (e.g. Spotlight/IME)
+node src/cli.ts map-combo capslock cmd q      # Caps Lock -> ⌘Q
+node src/cli.ts map-combo a opt 5            # any key works as the source, too
+```
+**Modifier aliases** (first arg after the source key):
+
+| alias | modifier | | alias | modifier |
+|---|---|---|---|---|
+| `cmd` / `command` / `win` / `gui` | Left ⌘ | | `rcmd` | Right ⌘ |
+| `opt` / `option` / `alt` | Left ⌥ | | `ropt` | Right ⌥ |
+| `ctrl` / `control` | Left ⌃ | | `rctrl` | Right ⌃ |
+| `shift` | Left ⇧ | | `rshift` | Right ⇧ |
+
+The third arg (the key) must be a normal key, not another modifier — `f13`, `space`,
+`q`, `5`, etc. Run `list-keys` for the full target list.
+
+### The on-board Super keys
+`supera` (hardware code `0x6d`) and `superb` (`0x6c`) are normal mappable hardware
+keys — treat them like any other source in `map`, `map-combo`, or `map-hid`. (These
+are distinct from the *external* 3.5mm Super-Button accessories, which use a separate
+protocol — see [SUPER-BUTTON-PROTOCOL.md](./SUPER-BUTTON-PROTOCOL.md).)
+```sh
+node src/cli.ts map supera esc               # plain remap, no modifier
+node src/cli.ts map-combo supera cmd f13     # or a chord, as above
+```
+
+### Map to a raw HID usage (escape hatch)
+When a target isn't in the `list-keys` table, write the HID usage bytes directly.
+The chord encoding is `07 <modifier-usage> <key-usage>`:
+```sh
+node src/cli.ts map-hid supera 07 e3 68      # ⌘(e3) + F13(68) — same as map-combo supera cmd f13
+node src/cli.ts map-hid capslock 00 00 29    # plain key, no modifier (29 = Esc)
+```
+
+### Undo / revert
+```sh
+node src/cli.ts map capslock capslock        # map a key back to itself
+node src/cli.ts profile delete               # wipe the profile -> back to factory layout
+#                                              or just press the Profile button to toggle the LED off
+```
+
 ## How it works
 The keyboard exposes three USB interfaces; **interface #2** (HID usage page `0x8c`)
 is a vendor config channel. Commands are HID reports whose first byte is the report
