@@ -84,29 +84,84 @@ MAP_SUPER_B=10, MAP_A=12, ... MAP_MAX=116`).
 
 ## macOS transport — the open gap
 
-The keyboard's config interface (USB interface #2, **usage page `0x8c`**, the one we
-program over with `node-hid`) declares these report IDs in its HID report descriptor:
+Ground truth — decoded the **real** HID report descriptors macOS exposes for the
+keyboard (`scripts/hid-descriptors.py`, parsed straight from IOKit). PID `0x5200`
+presents exactly three HID collections:
 
 ```
-outputs: 0x52 (legacy key-map, what we use), 0x51, 0xb2     ; all 32-byte
-inputs : 0x54 (responses we read), 0xb1                     ; all 32-byte
+collection A (vendor)     : reportID 0x03 INPUT 5B
+collection B (the keyboard): 0x01 IN 8B / 0x01 OUT 1B / 0x02 / 0x06 / 0x0a / 0x0c / 0x11
+                             (boot kbd + consumer + system) — userland open refused
+collection C (vendor cfg) : 0x51 OUT 32 / 0x52 OUT 32 / 0xb2 OUT 32
+                            0x54 IN 32 / 0xb1 IN 32      <- the channel we use
 ```
 
-- Report ID `0x81` is **not** declared, and these reports are **32-byte**, so the
-  64-byte `0x81` Advance reports can't be delivered through this interface on macOS.
+- **Report ID `0x81` and any 64-byte report are absent from EVERY collection.** Confirmed
+  empirically, not inferred. (The earlier ioreg pass turned up a `0x81`/64-byte report and
+  a descriptor full of "super-key" usages, but both were Apple devices — the Internal
+  Keyboard and a Magic Trackpad — not the 8BitDo. Ruled out.)
 - Probing the unused 32-byte channels: `0xb2` is silent; `0x51`/`0x52` with the Advance
   framing only hit legacy commands (`[0x52,0x04,...]` is just **cmd `0x04` = get FW
   version**, which returns `"1.7.7r"` — confirming the keyboard is alive and on 1.7.7).
-- The Windows app selects this transport at runtime from the connected device, so the
-  exact report ID / interface it uses for *this* keyboard is the one detail static RE
-  can't pin down.
 
-### To finish (when revisiting)
+### 2026-06-30 update — empirically retested on macOS (no Windows capture)
 
-A ~1-minute **USB capture** (USBPcap + Wireshark on Windows) of the V1.33 app while
-mapping one external button reveals the real report ID, interface, and full byte
-sequence — at which point this becomes a `map-super` command in `src/`. We now know
-*exactly* what to look for (the `0x11`/`0x12` cmd bytes and the packet shape above).
+The earlier claim "*64-byte `0x81` reports can't be delivered on macOS*" was an
+inference from the report descriptor. We tested it directly with `node-hid`
+(`scripts/probe-super.cjs`, `scripts/probe-super2.cjs`) against the connected keyboard:
+
+- **Delivery works.** `hid_write` of a 64-byte report-ID-`0x81` output report on the
+  `0x8c` interface **succeeds** (returns 64) and the device **responds** with
+  `54 e4 09` on the legacy `0x54` input channel. So `0x81` *is* deliverable on macOS.
+- **But the `0x8c` interface does not process Advance commands.** The response is a
+  **uniform `54 e4 09` for *any* `0x81` report** — valid `readSuper` (`0x11`),
+  `getSuperIndex` (`0x19`), and even a deliberately malformed `[0x81,0x80]` frame all
+  return byte-identical `54 e4 09`. The legacy ATTN handshake by contrast returns
+  `54 e4 08` (= OK). So `e4 09` is the legacy module's generic "report ID I don't
+  handle" ack — the Advance protocol is **not** served on this `0x8c` channel.
+- **Feature reports are not the channel** either: `getFeatureReport(0x81, …)` fails
+  ("could not get feature report") on every collection.
+- **Enumeration (macOS):** PID `0x5200` exposes only iface 0 (`0x1` boot kbd),
+  iface 1 (`0x1`/`0xc` the protected keyboard — refuses to open), iface 2 (`0x8c`
+  vendor cfg). There is **no separate vendor collection** for the Advance/`0x81`
+  channel visible on macOS.
+
+### Static RE corroboration (no hardware/Windows needed)
+
+`8BitDoAdvance.dll` **statically links hidapi** — the exact library `node-hid` wraps
+(`hid_enumerate` / `hid_open_path` / `hid_write` / `hid_read_timeout`). So a faithful
+macOS port is possible *if* we can reach the right collection. Confirmed in the binary:
+the Advance/FWU report size is **64** (`push 0x40` into both `hid_write` and
+`hid_read_timeout`, 1000 ms timeout). The opener at `fcn.1043fe90` (`SSwitchHid.cpp`,
+under `8BitDoFirmwareUpdaterTools`) filters `product_id` (`word [eax+6]`) against
+**`0x2009`/`0x2019`** — i.e. the **bootloader/DFU** PIDs, *not* the keyboard's
+`0x5200`. So that is the firmware-updater mode-switch path, **not** the super-button
+opener; the super-button open path (filtering `0x5200`) is a separate, not-yet-traced
+function. `RTKHIDKit.dll` is a Realtek LE-Audio/CFU component — unrelated.
+
+### Conclusion (2026-06-30)
+
+The external Super-Button **accessory was physically connected the entire time** these
+probes ran, yet `readSuper` over the `0x8c` channel returns nothing but the generic
+`e4 09` ack — so "empty store" is **ruled out**; the `0x8c` vendor interface genuinely
+does not serve the Advance protocol. Combined with the descriptor ground truth (no
+`0x81`/64-byte report on any collection) and iface 1 refusing to open from userland,
+the Advance super-button channel is **not reachable from macOS userland HID** as the
+keyboard currently enumerates. The original "32- vs 64-byte report" framing was
+incomplete: the deeper issue is *which interface serves Advance*, and it isn't the one
+we can open. Leading hypothesis: Advance rides the **protected keyboard interface (#1)**
+or a collection macOS doesn't expose openably — consistent with Phase 0's finding that
+iface 1 refuses userland opens.
+
+### To finish (when revisiting), in order of preference
+
+1. **Trace the `0x5200` super-button opener** in `8BitDoAdvance.dll` (from the
+   `readSuper`/`writeSuper` exports down to its `hid_open_path`) to learn which
+   interface/usage it opens. The two `0x5200` sites found so far (`0x10435806`,
+   `0x104381e0`) are VID/PID *model-dispatch* tables, not the HID-open filter — the
+   open routine is deeper in the JP68/S68 driver. This is the cleanest no-Windows path.
+2. **USB capture** (USBPcap + Wireshark on Windows) of V1.33 mapping one external
+   button — still the definitive answer, but a last resort given the no-Windows preference.
 
 ## Current workaround (in use)
 

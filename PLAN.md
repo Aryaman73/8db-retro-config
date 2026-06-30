@@ -82,12 +82,28 @@ gatekeeps it out of an allowlist.
   commands `0x11` read / `0x12` write / `0x15` delete / `0x17` recognize / `0x19` index;
   packet `[id,0x04,cmd,sub,len,Σdata&0xff,offset(4),data]`; `PAT_KEYBOARD_MAPPING_INFO`
   (uuid + 4× `{keyCode,mapping,type}`), 8 accessories. **See `SUPER-BUTTON-PROTOCOL.md`.**
-- **Open:** the Advance protocol uses **64-byte reports on report ID `0x81`**, but the
-  macOS-visible `0x8c` interface only declares 32-byte reports (`0x51`/`0x52`/`0xb2`).
-  `0x81` isn't deliverable as-is and the 32-byte channels stay silent. The definitive
-  finish is a brief **Windows USB capture** (we now know exactly what to look for).
-- **Decision (current):** documented + parked; use the on-board Super A (⌘+F13) for
-  Wispr. Confirmed keyboard FW = `1.7.7r` (legacy cmd `0x04` = get version).
+- **2026-06-30 retest on macOS (no Windows):** the old "`0x81` isn't deliverable on
+  macOS" claim is **disproven**. A 64-byte report-ID-`0x81` `hid_write` on the `0x8c`
+  interface succeeds and the device replies `54 e4 09`. BUT that ack is **uniform for
+  any `0x81` report** (valid `readSuper`, `getSuperIndex`, and a malformed frame all
+  identical; handshake gives `54 e4 08` = OK) → the `0x8c` interface does **not** parse
+  Advance commands. Feature reports also fail.
+- **Descriptor ground truth** (`scripts/hid-descriptors.py`, decoded from IOKit): across
+  all three macOS-visible collections, report ID `0x81` and any 64-byte report are
+  **absent**. The external accessory was **connected throughout**, so "empty store" is
+  ruled out — the `0x8c` vendor interface simply doesn't serve Advance, and iface 1
+  (the keyboard) refuses userland opens. So the channel is **not reachable from macOS
+  userland HID** as the keyboard enumerates. Probes: `scripts/probe-super*.cjs`,
+  `scripts/hid-descriptors.py`. Full writeup in `SUPER-BUTTON-PROTOCOL.md`.
+- **Static win:** `8BitDoAdvance.dll` statically links **hidapi** (same as `node-hid`),
+  so a faithful macOS port is viable *once the right interface is found*; 64-byte report
+  size confirmed in the binary. The opener traced so far (`SSwitchHid`) is the DFU
+  path (PIDs `0x2009`/`0x2019`), not super buttons.
+- **Next, in order:** (1) trace the `0x5200` super-button `hid_open_path` in the DLL to
+  pin which interface serves Advance (cleanest no-Windows path); (2) Windows USB capture
+  as last resort. Leading hypothesis: Advance rides the protected keyboard interface #1.
+- **Decision (current):** still parked for daily use; the on-board Super A (⌘+F13)
+  drives Wispr. Confirmed keyboard FW = `1.7.7r` (legacy cmd `0x04` = get version).
 
 ## Phase 4 — Electron GUI
 - Visual keyboard layout → click key → remap; Super Button panel; profiles.
