@@ -1,21 +1,32 @@
 # External Super-Button Protocol — reverse-engineering notes
 
-Status: **protocol decoded; macOS transport not yet closed.** This documents how the
-8BitDo external "Super Button" accessories (the big circular A/B buttons that plug
-into the keyboard's 3.5mm jack) are programmed, reverse-engineered from the official
-software. It is the missing piece neither upstream nor anyone public had documented.
+Status: **protocol fully decoded; transport identified — but it rides an
+interrupt endpoint macOS won't let userland touch, so a native macOS port is
+blocked at the OS driver-model level.** Reverse-engineered from the official
+**Windows** software (`8BitDoAdvance.dll`), which is the reference that supports the
+N Edition.
 
 ## TL;DR
 
 - The external Super Buttons are **not** the same as the on-board Super A/B keys
-  (`supera` 0x6d / `superb` 0x6c). They are a separate, **UUID-addressed** accessory
-  store, programmed over a **different command family** than the legacy `0x52` key-map
-  protocol — which is exactly why every `0x52`-channel scan came up empty.
-- We recovered the entire command set, packet format, checksum, and data model.
-- The blocker is a **HID transport detail**: the protocol uses **64-byte reports on
-  report ID `0x81`**, but the keyboard's macOS-visible config interface only declares
-  **32-byte** reports (`0x51`/`0x52`/`0xb2`). Closing that last gap cleanly needs a
-  short USB capture of the Windows app talking to this keyboard.
+  (`supera` 0x6d / `superb` 0x6c — those are already programmable today; Super A drives
+  Wispr). They are a separate, **UUID-addressed** accessory store, programmed over a
+  **different command family** than the legacy `0x52` key-map protocol.
+- We recovered the entire command set, packet format, checksum, and data model. The
+  keyboard's transport is a **64-byte report `0x81` on iface 2** (usagePage `0x8c`),
+  delivered by Windows via `WriteFile`/`ReadFile` = the **interrupt OUT/IN endpoints**.
+  Framing `[0x81, 0x04, cmd, sub, len, Σ&0xff, offset(4 LE), data…]`.
+- **The blocker is the macOS driver model.** Iface 2 has the interrupt OUT endpoint,
+  but macOS's `AppleUserHIDDevice` dext claims the interface **exclusively**
+  (`super-usb.c` → `USBInterfaceOpen`/`Seize` both return `kIOReturnExclusiveAccess`
+  `0xe00002c5`), and the only userland HID API (`IOHIDManager`) reaches just the
+  **control** endpoint — which the firmware does not route to the Advance handler
+  (control `0x81` gets the reject `54 e4 09`). So `node-hid`/IOKit cannot reach this
+  channel on this Mac. See "macOS transport — DIAGNOSED" below.
+- **Ways to actually get it done (no physical Windows box):** run the Windows app in a
+  **USB-passthrough VM** (UTM/VMware Fusion) — config persists in firmware, so the
+  buttons then work natively on macOS; or write a custom **DriverKit dext** that claims
+  iface 2 and drives the interrupt-OUT pipe (`super-usb.c` has the pipe logic ready).
 
 ## Where this came from
 
@@ -82,86 +93,84 @@ The on-board keyboard layout uses a separate index enum `MAP_KEYBOARD_E`
 (`MAP_L_CTRL=0, MAP_L_ALT=2, MAP_L_WIN=3, MAP_R_ALT=6, MAP_R_WIN=7, MAP_SUPER_A=9,
 MAP_SUPER_B=10, MAP_A=12, ... MAP_MAX=116`).
 
-## macOS transport — the open gap
+## macOS transport — DIAGNOSED (2026-07-06): the Windows transport, and the macOS wall
 
-Ground truth — decoded the **real** HID report descriptors macOS exposes for the
-keyboard (`scripts/hid-descriptors.py`, parsed straight from IOKit). PID `0x5200`
-presents exactly three HID collections:
+Grounded in the **Windows DLL** (`8BitDoAdvance.dll`), which is the reference that
+actually supports the N Edition. (An earlier pass leaned on the *macOS* app
+`S68KBSuperKeyExtenseVC` for the transport — but that app targets a **different**
+8BitDo keyboard and its Feature/`0x81` convention may not match the N Edition, so it
+is treated as non-authoritative here.)
 
-```
-collection A (vendor)     : reportID 0x03 INPUT 5B
-collection B (the keyboard): 0x01 IN 8B / 0x01 OUT 1B / 0x02 / 0x06 / 0x0a / 0x0c / 0x11
-                             (boot kbd + consumer + system) — userland open refused
-collection C (vendor cfg) : 0x51 OUT 32 / 0x52 OUT 32 / 0xb2 OUT 32
-                            0x54 IN 32 / 0xb1 IN 32      <- the channel we use
-```
+### 1. Which interface — the reachable `0x8c`
 
-- **Report ID `0x81` and any 64-byte report are absent from EVERY collection.** Confirmed
-  empirically, not inferred. (The earlier ioreg pass turned up a `0x81`/64-byte report and
-  a descriptor full of "super-key" usages, but both were Apple devices — the Internal
-  Keyboard and a Magic Trackpad — not the 8BitDo. Ruled out.)
-- Probing the unused 32-byte channels: `0xb2` is silent; `0x51`/`0x52` with the Advance
-  framing only hit legacy commands (`[0x52,0x04,...]` is just **cmd `0x04` = get FW
-  version**, which returns `"1.7.7r"` — confirming the keyboard is alive and on 1.7.7).
+The *actual* super-button opener is `Open_Hid`/`Open_Hid68` (`fcn.10439690` /
+`fcn.104394c0`), opening a path from the enumerated array `0x10c56de8[]`. The
+enumerator (`fcn.10435550`) matches `(PID, usagePage, usage)`; for **PID `0x5200`**
+it requires **usagePage `0x8c`, usage `1`** — exactly **iface 2**, the vendor-config
+collection we already open from userland. So the old "Advance rides the protected
+keyboard interface #1" hypothesis is **disproven**. (The `SSwitchHid`/`0x2009`/`0x2019`
+opener is the DFU path, unrelated.)
 
-### 2026-06-30 update — empirically retested on macOS (no Windows capture)
+### 2. Which transport — 64-byte report `0x81` over the INTERRUPT endpoints
 
-The earlier claim "*64-byte `0x81` reports can't be delivered on macOS*" was an
-inference from the report descriptor. We tested it directly with `node-hid`
-(`scripts/probe-super.cjs`, `scripts/probe-super2.cjs`) against the connected keyboard:
+For the keyboard (JP68/S68), both the generic path (`readSuper`/`writeSuper` →
+framing `fcn.10404f30`, `WriteHidAdvance`) and the JP68-specific path
+(`WriteHidAdvance68`/`ReadHidAdvance68`, handles from `Open_Hid68`) do a **raw 64-byte
+`WriteFile` / overlapped `ReadFile`** on the HID handle. On Windows, `WriteFile`/
+`ReadFile` on a HID handle use the **interrupt OUT / interrupt IN endpoints**. Wire
+framing: `[0x81, 0x04, cmd, sub, len, Σ&0xff, offset(4 LE), data…]`, report ID `0x81`.
 
-- **Delivery works.** `hid_write` of a 64-byte report-ID-`0x81` output report on the
-  `0x8c` interface **succeeds** (returns 64) and the device **responds** with
-  `54 e4 09` on the legacy `0x54` input channel. So `0x81` *is* deliverable on macOS.
-- **But the `0x8c` interface does not process Advance commands.** The response is a
-  **uniform `54 e4 09` for *any* `0x81` report** — valid `readSuper` (`0x11`),
-  `getSuperIndex` (`0x19`), and even a deliberately malformed `[0x81,0x80]` frame all
-  return byte-identical `54 e4 09`. The legacy ATTN handshake by contrast returns
-  `54 e4 08` (= OK). So `e4 09` is the legacy module's generic "report ID I don't
-  handle" ack — the Advance protocol is **not** served on this `0x8c` channel.
-- **Feature reports are not the channel** either: `getFeatureReport(0x81, …)` fails
-  ("could not get feature report") on every collection.
-- **Enumeration (macOS):** PID `0x5200` exposes only iface 0 (`0x1` boot kbd),
-  iface 1 (`0x1`/`0xc` the protected keyboard — refuses to open), iface 2 (`0x8c`
-  vendor cfg). There is **no separate vendor collection** for the Advance/`0x81`
-  channel visible on macOS.
+### 3. The macOS wall — the interrupt OUT endpoint is unreachable from userland
 
-### Static RE corroboration (no hardware/Windows needed)
+Interface 2 physically **has** the needed endpoints (ioreg: `bNumEndpoints = 2` on
+iface 2; iface 0/1 have 1 each — an interrupt IN + interrupt OUT). But:
 
-`8BitDoAdvance.dll` **statically links hidapi** — the exact library `node-hid` wraps
-(`hid_enumerate` / `hid_open_path` / `hid_write` / `hid_read_timeout`). So a faithful
-macOS port is possible *if* we can reach the right collection. Confirmed in the binary:
-the Advance/FWU report size is **64** (`push 0x40` into both `hid_write` and
-`hid_read_timeout`, 1000 ms timeout). The opener at `fcn.1043fe90` (`SSwitchHid.cpp`,
-under `8BitDoFirmwareUpdaterTools`) filters `product_id` (`word [eax+6]`) against
-**`0x2009`/`0x2019`** — i.e. the **bootloader/DFU** PIDs, *not* the keyboard's
-`0x5200`. So that is the firmware-updater mode-switch path, **not** the super-button
-opener; the super-button open path (filtering `0x5200`) is a separate, not-yet-traced
-function. `RTKHIDKit.dll` is a Realtek LE-Audio/CFU component — unrelated.
+- **macOS HID (`IOHIDManager`) only exposes the CONTROL endpoint** (`SET_REPORT`/
+  `GET_REPORT`), never the interrupt OUT pipe. Delivering the 64-byte `0x81` command
+  over control `SET_REPORT` reaches the device but the firmware does **not** route it
+  to the Advance handler — you get the uniform legacy reject `54 e4 09` (Output path)
+  / an ACK-and-drop (Feature path). The Advance handler evidently only services the
+  **interrupt OUT** endpoint that Windows' `WriteFile` targets.
+- **Raw USB to the interrupt OUT pipe is blocked.** `scripts/super-usb.c` opens the
+  keyboard's iface 2 via `IOUSBLib` and tries to write its interrupt-OUT pipe
+  directly (the exact Windows transport). `USBInterfaceOpen` **and**
+  `USBInterfaceOpenSeize` both return **`0xe00002c5` = `kIOReturnExclusiveAccess`**:
+  macOS's `AppleUserHIDDevice` dext claims iface 2 **exclusively**, so no userland
+  process can take the pipe.
+- **The HID descriptor doesn't help either.** The `0x8c` collection's report
+  descriptor (82 B, decoded byte-for-byte) declares only **32-byte** reports
+  (`0xb1/0x54` IN, `0xb2/0x51/0x52` OUT) — **no `0x81`, no Feature, nothing 64-byte**.
+  For the Windows `WriteFile(64)` to be legal, the unit must present a 64-byte report
+  to Windows; macOS sees only 32-byte. Whether that's an OS-conditional descriptor or
+  a firmware/variant difference can only be settled by observing the Windows-side
+  enumeration.
 
-### Conclusion (2026-06-30)
+### Conclusion — blocked by the macOS driver model, not by our code
 
-The external Super-Button **accessory was physically connected the entire time** these
-probes ran, yet `readSuper` over the `0x8c` channel returns nothing but the generic
-`e4 09` ack — so "empty store" is **ruled out**; the `0x8c` vendor interface genuinely
-does not serve the Advance protocol. Combined with the descriptor ground truth (no
-`0x81`/64-byte report on any collection) and iface 1 refusing to open from userland,
-the Advance super-button channel is **not reachable from macOS userland HID** as the
-keyboard currently enumerates. The original "32- vs 64-byte report" framing was
-incomplete: the deeper issue is *which interface serves Advance*, and it isn't the one
-we can open. Leading hypothesis: Advance rides the **protected keyboard interface (#1)**
-or a collection macOS doesn't expose openably — consistent with Phase 0's finding that
-iface 1 refuses userland opens.
+The protocol is fully known. The transport is 64-byte `0x81` on iface 2's **interrupt
+OUT/IN endpoints**. On macOS those endpoints are owned exclusively by the kernel HID
+driver, and the only userland HID API (`IOHIDManager`) can reach just the control
+endpoint, which the firmware doesn't route to the Advance handler. So a pure
+`node-hid`/IOKit port **cannot** reach this channel on this Mac. This is a macOS
+USB/HID driver-model wall, independent of protocol correctness.
 
-### To finish (when revisiting), in order of preference
+### Options to actually get it done (no physical Windows box)
 
-1. **Trace the `0x5200` super-button opener** in `8BitDoAdvance.dll` (from the
-   `readSuper`/`writeSuper` exports down to its `hid_open_path`) to learn which
-   interface/usage it opens. The two `0x5200` sites found so far (`0x10435806`,
-   `0x104381e0`) are VID/PID *model-dispatch* tables, not the HID-open filter — the
-   open routine is deeper in the JP68/S68 driver. This is the cleanest no-Windows path.
-2. **USB capture** (USBPcap + Wireshark on Windows) of V1.33 mapping one external
-   button — still the definitive answer, but a last resort given the no-Windows preference.
+1. **Windows in a USB-passthrough VM** (UTM on Apple Silicon, or VMware Fusion —
+   both free). Pass the keyboard through, run 8BitDo Ultimate Software V2, configure
+   the super buttons. The config **persists in the keyboard's firmware**, so the
+   buttons then work natively on macOS afterward — no Karabiner, no physical Windows
+   machine. This is also the way to (a) confirm whether the N Edition exposes the
+   64-byte `0x81` channel to Windows and (b) capture the exact bytes (Wireshark +
+   USBPcap) if a native port is still wanted.
+2. **A custom macOS DriverKit extension (dext)** that claims iface 2 instead of
+   `AppleUserHIDDevice` and writes the interrupt-OUT pipe — this is the only way to do
+   the transport *natively* on macOS. Large effort; needs a signed dext. `super-usb.c`
+   already has the exact pipe-write logic that a dext would run once it owns the pipe.
+3. **Plug the physical external Super Button into the jack, re-run
+   `python3 scripts/hid-descriptors.py`** to check whether the accessory makes the
+   keyboard re-enumerate with a `0x81`/64-byte report (unlikely to change the
+   endpoint-claim wall, but cheap to check).
 
 ## Current workaround (in use)
 

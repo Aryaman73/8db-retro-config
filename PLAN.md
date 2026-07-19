@@ -72,7 +72,24 @@ gatekeeps it out of an allowlist.
   arbitrary chords to the Super buttons. For the user's Wispr Flow need, just
   hardware-map a Super button to an unused "hyper" chord and bind the app to it.
 
-## Phase 3.5 — External Super Buttons (3.5mm jack)  🔬 PROTOCOL DECODED, TRANSPORT OPEN
+## Phase 3.5 — External Super Buttons (3.5mm jack)  ✅ DIAGNOSED — macOS driver-model wall
+- **2026-07-06 (grounded in the WINDOWS DLL — the N Edition's real reference):** the
+  keyboard's super-button transport is a **64-byte report `0x81` on iface 2 (usagePage
+  `0x8c`)**, delivered on Windows via `WriteFile`/`ReadFile` = the **interrupt OUT/IN
+  endpoints** (generic `WriteHidAdvance` + JP68 `WriteHidAdvance68`/`ReadHidAdvance68`;
+  opener `Open_Hid`/`Open_Hid68` selects `0x8c`/usage 1 — NOT the protected keyboard
+  iface). **macOS wall:** iface 2 has the interrupt-OUT endpoint but macOS's
+  `AppleUserHIDDevice` dext claims it **exclusively** — raw USB open (`scripts/super-usb.c`,
+  IOUSBLib) returns `kIOReturnExclusiveAccess 0xe00002c5` on `Open` and `Seize`; and the
+  only userland HID API (IOHIDManager) reaches just the **control** endpoint, which the
+  firmware doesn't route to Advance (control `0x81` → reject `54 e4 09`). So node-hid/IOKit
+  can't reach this channel on this Mac. **Ways forward:** (1) Windows app in a
+  USB-passthrough VM (UTM/VMware) — config persists in firmware, works natively after;
+  (2) a DriverKit dext claiming iface 2 (pipe logic ready in `super-usb.c`). NOTE: the
+  *macOS* app `S68KBSuperKeyExtenseVC` (Feature/0x81) targets a DIFFERENT 8BitDo keyboard
+  — not authoritative for the N Edition. Details in `SUPER-BUTTON-PROTOCOL.md`.
+
+<details><summary>Prior investigation notes (superseded)</summary>
 - The big circular A/B accessories are a **separate, UUID-addressed store** with its
   own command family — NOT the on-board `supera`/`superb` keys, and NOT on the legacy
   `0x52` channel (hence invisible to every scan). They are live only in the default
@@ -104,6 +121,7 @@ gatekeeps it out of an allowlist.
   as last resort. Leading hypothesis: Advance rides the protected keyboard interface #1.
 - **Decision (current):** still parked for daily use; the on-board Super A (⌘+F13)
   drives Wispr. Confirmed keyboard FW = `1.7.7r` (legacy cmd `0x04` = get version).
+</details>
 
 ## Phase 4 — Electron GUI
 - Visual keyboard layout → click key → remap; Super Button panel; profiles.
