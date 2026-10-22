@@ -85,6 +85,15 @@ gatekeeps it out of an allowlist.
   hardware-map a Super button to an unused "hyper" chord and bind the app to it.
 
 ## Phase 3.5 — External Super Buttons (3.5mm jack)  ⛔ BLOCKED on macOS — next: Windows VM
+- **2026-10-21 — "macOS driver wall" DISPROVEN, real blocker is the firmware.**
+  `scripts/super-capture.c` (libusb device capture, `sudo`) claims iface 2 and writes
+  its interrupt-OUT endpoint directly. Legacy `0x52` commands work there; Advance
+  `readSuper` still gets `54 e4 09`. The device's own report descriptor has no `0x81`
+  (out) or `0x02` (in), which the DLL's keyboard path (`WriteHidAdvance68`) requires.
+  So the firmware doesn't expose Advance as it enumerates on a Mac — possibly
+  host-OS-dependent, which only Windows enumeration can reveal. A dext would not help.
+  Details: `SUPER-BUTTON-PROTOCOL.md` "2026-10-21 — device-capture test".
+- *(Below: the 2026-07-06 notes, kept for history.)*
 - **2026-07-06 (grounded in the WINDOWS DLL — the N Edition's real reference):** the
   keyboard's super-button transport is a **64-byte report `0x81` on iface 2 (usagePage
   `0x8c`)**, delivered on Windows via `WriteFile`/`ReadFile` = the **interrupt OUT/IN
@@ -151,6 +160,7 @@ gatekeeps it out of an allowlist.
 3. ~~On-board Super A/B / chords unreachable~~ — RESOLVED. Single-key AND
    single-modifier chords work via the profile MAP command (`07 <mod> <key>`).
 3b. **External 3.5mm Super Buttons** — OPEN. Unreachable from macOS userland (exclusive
-   driver claim on the interrupt endpoint); workaround is the Windows VM (Phase 3.5).
+   firmware doesn't expose the Advance channel as it enumerates on macOS — verified
+   with direct endpoint access); workaround is the Windows VM (Phase 3.5).
 3c. **Multi-modifier chords** — OPEN (Phase 3).
 4. TS port fidelity — mitigated by golden-byte tests (Phase 2, `npm test`).

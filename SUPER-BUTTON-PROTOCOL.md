@@ -1,10 +1,39 @@
 # External Super-Button Protocol — reverse-engineering notes
 
-Status: **protocol fully decoded; transport identified — but it rides an
-interrupt endpoint macOS won't let userland touch, so a native macOS port is
-blocked at the OS driver-model level.** Reverse-engineered from the official
-**Windows** software (`8BitDoAdvance.dll`), which is the reference that supports the
-N Edition.
+Status: **protocol decoded, but the keyboard doesn't speak it as it enumerates on
+macOS.** The earlier "macOS driver wall" theory is **disproven** (2026-10-21): with
+device capture we reach iface 2's interrupt endpoints directly from macOS, and the
+firmware still rejects the Advance frame. See "2026-10-21 — device-capture test"
+below. Reverse-engineered from the official **Windows** software (`8BitDoAdvance.dll`).
+
+## 2026-10-21 — device-capture test (supersedes the "macOS driver wall")
+
+`scripts/super-capture.c` uses libusb + macOS **device capture** (what UTM/VMware USB
+passthrough use; needs `sudo`) to detach macOS's drivers and claim iface 2 — no
+`kIOReturnExclusiveAccess`. Results, keyboard FW 1.7.7r:
+
+- iface 2 endpoints: **`0x84` interrupt IN**, **`0x05` interrupt OUT**, both 64 B max packet.
+- Report descriptor fetched **from the device** (not IOKit): the same 82 bytes macOS
+  showed — in `0xb1`, `0x54`; out `0xb2`, `0x51`, `0x52`; all 32 B. No `0x81`, no `0x02`.
+- Legacy channel over interrupt OUT works: `52 76 ff` → `54 e4 08`; `52 80` → profile "main".
+- **Advance `readSuper` over interrupt OUT → `54 e4 09`** — the same reject as via
+  IOHIDManager. So transport was never the problem.
+- DLL cross-check: the keyboard-family path (`read68RRConnect` → `WriteHidAdvance68`)
+  sends `[0x81, 0x04, cmd, …]` (64 B, report ID set by the caller) and expects replies
+  starting `02 04 … cmd` — i.e. **out report `0x81`, in report `0x02`**, neither of
+  which this keyboard declares here. Windows `WriteFile(64)` would also be illegal
+  against this 32-byte descriptor.
+
+**Conclusion:** as enumerated on this Mac, the N Edition's firmware does not expose
+the Advance channel at all. Either it presents a different descriptor to Windows
+(8BitDo firmware is known to detect the host OS), or this firmware/model doesn't
+support the Advance path. Host-OS detection happens during enumeration, which macOS
+performs, so it can't be spoofed from a Mac. **The Windows VM is the only remaining
+route** — and it settles both questions (watch the guest's descriptor for `0x81`/`0x02`).
+
+Untested on purpose: the undocumented `0xb2`/`0xb1` and `0x51` reports. Nothing ties
+them to super buttons, and blind writes on an unknown channel risk hitting
+firmware/DFU commands.
 
 ## TL;DR
 
@@ -16,7 +45,7 @@ N Edition.
   keyboard's transport is a **64-byte report `0x81` on iface 2** (usagePage `0x8c`),
   delivered by Windows via `WriteFile`/`ReadFile` = the **interrupt OUT/IN endpoints**.
   Framing `[0x81, 0x04, cmd, sub, len, Σ&0xff, offset(4 LE), data…]`.
-- **The blocker is the macOS driver model.** Iface 2 has the interrupt OUT endpoint,
+- ~~**The blocker is the macOS driver model.**~~ *(Disproven 2026-10-21 — see above.)* Iface 2 has the interrupt OUT endpoint,
   but macOS's `AppleUserHIDDevice` dext claims the interface **exclusively**
   (`super-usb.c` → `USBInterfaceOpen`/`Seize` both return `kIOReturnExclusiveAccess`
   `0xe00002c5`), and the only userland HID API (`IOHIDManager`) reaches just the
@@ -93,7 +122,7 @@ The on-board keyboard layout uses a separate index enum `MAP_KEYBOARD_E`
 (`MAP_L_CTRL=0, MAP_L_ALT=2, MAP_L_WIN=3, MAP_R_ALT=6, MAP_R_WIN=7, MAP_SUPER_A=9,
 MAP_SUPER_B=10, MAP_A=12, ... MAP_MAX=116`).
 
-## macOS transport — DIAGNOSED (2026-07-06): the Windows transport, and the macOS wall
+## macOS transport — 2026-07-06 diagnosis (SUPERSEDED by the 2026-10-21 capture test)
 
 Grounded in the **Windows DLL** (`8BitDoAdvance.dll`), which is the reference that
 actually supports the N Edition. (An earlier pass leaned on the *macOS* app
@@ -155,6 +184,9 @@ endpoint, which the firmware doesn't route to the Advance handler. So a pure
 USB/HID driver-model wall, independent of protocol correctness.
 
 ### Options to actually get it done (no physical Windows box)
+
+*(2026-10-21: option 2 is moot — a dext would only reach the same endpoint the capture
+test already reached, and the firmware rejects the frame there. Option 1 remains.)*
 
 1. **Windows in a USB-passthrough VM** (UTM on Apple Silicon, or VMware Fusion —
    both free). Pass the keyboard through, run 8BitDo Ultimate Software V2, configure

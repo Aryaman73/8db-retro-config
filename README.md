@@ -105,8 +105,9 @@ node src/cli.ts map-combo pagedown ctrl f18
 keys — treat them like any other source in `map`, `map-combo`, or `map-hid`. (These
 are distinct from the *external* 3.5mm Super-Button accessories, which use a separate
 protocol — see [SUPER-BUTTON-PROTOCOL.md](./SUPER-BUTTON-PROTOCOL.md). Those **can't be
-programmed from macOS** — the channel is claimed exclusively by the OS HID driver. The
-workaround is a one-time write from the official Windows app in a VM:
+programmed from macOS**: the keyboard's firmware doesn't expose that channel when it's
+plugged into a Mac (verified with direct USB endpoint access via
+`scripts/super-capture.c`). The workaround is a one-time write from the official Windows app in a VM:
 [SUPER-BUTTON-VM-SETUP.md](./SUPER-BUTTON-VM-SETUP.md).)
 ```sh
 node src/cli.ts map supera esc               # plain remap, no modifier
@@ -159,7 +160,7 @@ See `src/protocol/consts.ts` and `PLAN.md`.
 - `test/` — golden-byte tests (`npm test`).
 - `scripts/` — `probe.cjs` (HID diagnostics), `gen-keys.cjs` (regenerate `keys.ts`),
   `hid-input-monitor.c` (see what a key emits), and the Super-Button RE probes
-  (`probe-super*.cjs`, `super-iokit.c`, `super-usb.c`, `hid-descriptors.py`).
+  (`probe-super*.cjs`, `super-iokit.c`, `super-usb.c`, `super-capture.c`, `hid-descriptors.py`).
 - `reference/` — upstream `keys.py` for provenance.
 
 ## Safety
