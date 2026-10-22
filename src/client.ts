@@ -1,5 +1,3 @@
-import HID from 'node-hid';
-import { findConfigDevice } from './device.ts';
 import {
   REPORT_SIZE,
   ATTN,
@@ -17,173 +15,196 @@ import {
   MAPPING_GET,
   MAPPING,
 } from './protocol/consts.ts';
-import { HWKEY, HWKEY_BY_CODE, USAGE, USAGE_BY_CODE } from './protocol/keys.ts';
+import { HWKEY, HWKEY_BY_CODE, USAGE } from './protocol/keys.ts';
+import { chordUsage, hex, usageBytes, usageName } from './protocol/usage.ts';
 
-/** The slice of node-hid's device API the client uses (lets tests inject a fake). */
-export type HidDevice = Pick<HID.HID, 'write' | 'readTimeout' | 'close'>;
+/**
+ * How the client reaches the keyboard. Reports are report-ID-led (byte 0 is the
+ * report ID), exactly as they appear on the wire. `read` resolves to [] on
+ * timeout. Implemented over node-hid (src/device.ts) and WebHID (web/).
+ */
+export interface Transport {
+  write(report: number[]): Promise<void>;
+  read(timeoutMs: number): Promise<number[]>;
+  close(): Promise<void>;
+}
 
 function startsWith(buf: number[], prefix: number[]): boolean {
   for (let i = 0; i < prefix.length; i++) if (buf[i] !== prefix[i]) return false;
   return true;
 }
 
-/** Resolve a hardware key name, or a raw code like "0x6e" for keys not in the table. */
-function hwCode(hwName: string): number {
-  const named = HWKEY[hwName];
+/** Resolve a hardware key name, a raw code like "0x6e", or a numeric code. */
+function hwCode(hw: string | number): number {
+  if (typeof hw === 'number') return hw;
+  const named = HWKEY[hw];
   if (named !== undefined) return named;
-  if (/^0x[0-9a-f]{1,2}$/i.test(hwName)) return parseInt(hwName, 16);
-  throw new Error(`Unknown hardware key: ${hwName}`);
+  if (/^0x[0-9a-f]{1,2}$/i.test(hw)) return parseInt(hw, 16);
+  throw new Error(`Unknown hardware key: ${hw}`);
 }
 
-/** Mac-friendly modifier aliases -> USAGE table name. */
-const MOD_ALIAS: Record<string, string> = {
-  cmd: 'leftmeta', command: 'leftmeta', win: 'leftmeta', gui: 'leftmeta',
-  opt: 'leftalt', option: 'leftalt', alt: 'leftalt',
-  ctrl: 'leftctrl', control: 'leftctrl', shift: 'leftshift',
-  rcmd: 'rightmeta', ropt: 'rightalt', rctrl: 'rightctrl', rshift: 'rightshift',
-};
+/** Profile names travel as UTF-16BE. */
+function encodeName(name: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < name.length; i++) {
+    const c = name.charCodeAt(i);
+    out.push(c >> 8, c & 0xff);
+  }
+  return out;
+}
+
+function decodeName(bytes: number[]): string {
+  let end = bytes.length;
+  while (end > 0 && bytes[end - 1] === 0) end--;
+  if (end % 2) end++; // keep a trailing 0x00 high byte's partner
+  let s = '';
+  for (let i = 0; i + 1 < end; i += 2) s += String.fromCharCode((bytes[i] << 8) | bytes[i + 1]);
+  return s;
+}
 
 /**
- * Userland client for the 8BitDo Retro Mechanical Keyboard config protocol.
+ * Client for the 8BitDo Retro Mechanical Keyboard config protocol.
  * READ methods (status/profile/mappings) are hardware-validated on macOS.
- * WRITE methods (map*, deleteProfile, renameProfile) are implemented per the
+ * WRITE methods (map*, deleteProfile, createProfile) are implemented per the
  * reverse-engineered protocol but should be exercised deliberately.
+ *
+ * Every public method is one exclusive transaction: calls made while another
+ * is in flight queue behind it, so request/response pairs never interleave.
  */
 export class Keyboard {
-  private dev: HidDevice;
+  private dev: Transport;
+  private queue: Promise<unknown> = Promise.resolve();
 
-  private constructor(dev: HidDevice) {
+  constructor(dev: Transport) {
     this.dev = dev;
   }
 
-  /** Wrap an already-open device (used by tests to inject a fake). */
-  static fromDevice(dev: HidDevice): Keyboard {
-    return new Keyboard(dev);
+  close(): Promise<void> {
+    return this.exclusive(() => this.dev.close());
   }
 
-  /** Open the config interface, or throw a friendly error if not found. */
-  static open(): Keyboard {
-    const info = findConfigDevice();
-    if (!info) {
-      throw new Error(
-        'No 8BitDo keyboard config interface found. Connect it via USB-C with the power switch OFF.',
-      );
-    }
-    return new Keyboard(new HID.HID(info.path));
+  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.catch(() => {});
+    return run;
   }
 
-  close(): void {
-    this.dev.close();
+  private write(cmd: number[]): Promise<void> {
+    return this.dev.write(cmd.concat(Array(Math.max(0, REPORT_SIZE - cmd.length)).fill(0)));
   }
 
-  private write(cmd: number[]): void {
-    const buf = cmd.concat(Array(Math.max(0, REPORT_SIZE - cmd.length)).fill(0));
-    this.dev.write(buf);
+  private read(timeoutMs = 1000): Promise<number[]> {
+    return this.dev.read(timeoutMs);
   }
 
-  private read(timeoutMs = 1000): number[] {
-    return this.dev.readTimeout(timeoutMs);
-  }
-
-  private readExpect(prefix: number[], timeoutMs = 1000): number[] {
-    const r = this.read(timeoutMs);
+  private async readExpect(prefix: number[], timeoutMs = 1000): Promise<number[]> {
+    const r = await this.read(timeoutMs);
     if (!startsWith(r, prefix)) {
-      throw new Error(
-        `Unexpected response. expected ${Buffer.from(prefix).toString('hex')} got ${Buffer.from(r).toString('hex')}`,
-      );
+      throw new Error(`Unexpected response. expected ${hex(prefix)} got ${hex(r)}`);
     }
     return r;
+  }
+
+  /** ATTN handshake; the device replies (READY or OK), which we consume. */
+  private async handshake(): Promise<void> {
+    await this.write(ATTN);
+    await this.read();
   }
 
   /**
    * Diagnostic: send a single query (report-ID-led) after a handshake and
    * return the raw response. CALLER MUST pass only safe, non-mutating commands.
    */
-  probe(cmd: number[], timeoutMs = 300): number[] {
-    this.handshake();
-    this.write(cmd);
-    try {
-      return this.read(timeoutMs);
-    } catch {
-      return [];
-    }
-  }
-
-  /** ATTN handshake; the device replies READY, which we consume. */
-  private handshake(): void {
-    this.write(ATTN);
-    this.read();
+  probe(cmd: number[], timeoutMs = 300): Promise<number[]> {
+    return this.exclusive(async () => {
+      await this.handshake();
+      await this.write(cmd);
+      return this.read(timeoutMs).catch(() => []);
+    });
   }
 
   // --- READS (validated) ---
 
-  getProfileName(): string | null {
-    this.handshake();
-    this.write(PROFILE_GET_NAME);
-    const r = this.read();
-    if (startsWith(r, PROFILE_NONE)) return null;
-    if (startsWith(r, PROFILE_NAME) || startsWith(r, PROFILE_108_NAME)) {
-      let b = Buffer.from(r.slice(4));
-      let end = b.length;
-      while (end > 0 && b[end - 1] === 0) end--;
-      return b.subarray(0, end).swap16().toString('utf16le');
-    }
-    throw new Error(`Unexpected profile response: ${Buffer.from(r).toString('hex')}`);
+  getProfileName(): Promise<string | null> {
+    return this.exclusive(async () => {
+      await this.handshake();
+      await this.write(PROFILE_GET_NAME);
+      const r = await this.read();
+      if (startsWith(r, PROFILE_NONE)) return null;
+      if (startsWith(r, PROFILE_NAME) || startsWith(r, PROFILE_108_NAME)) return decodeName(r.slice(4));
+      throw new Error(`Unexpected profile response: ${hex(r)}`);
+    });
+  }
+
+  /** Hardware codes of keys that currently have a custom mapping. */
+  getMappedCodes(): Promise<number[]> {
+    return this.exclusive(async () => {
+      await this.handshake();
+      await this.write(PROFILE_GET_MAPPED);
+      let r = await this.readExpect(PROFILE_MAPPED);
+      const keymap: number[] = [];
+      const collect = (resp: number[]) => {
+        for (let i = 2; i < resp.length - 1; i++) keymap.push(resp[i]);
+      };
+      collect(r);
+      while (r[r.length - 1] === 0x01) {
+        r = await this.readExpect(PROFILE_MAPPED);
+        collect(r);
+      }
+      const codes: number[] = [];
+      for (let i = 0; i < keymap.length; i += 2) {
+        if (keymap[i] === 0) break;
+        codes.push(keymap[i]);
+      }
+      return codes;
+    });
   }
 
   /** Names of hardware keys that currently have a custom mapping. */
-  getMappedKeys(): string[] {
-    this.handshake();
-    this.write(PROFILE_GET_MAPPED);
-    let r = this.readExpect(PROFILE_MAPPED);
-    const keymap: number[] = [];
-    const collect = (resp: number[]) => {
-      for (let i = 2; i < resp.length - 1; i++) keymap.push(resp[i]);
-    };
-    collect(r);
-    while (r[r.length - 1] === 0x01) {
-      r = this.readExpect(PROFILE_MAPPED);
-      collect(r);
-    }
-    const names: string[] = [];
-    for (let i = 0; i < keymap.length; i += 2) {
-      const kc = keymap[i];
-      if (kc === 0) break;
-      names.push(HWKEY_BY_CODE[kc] ?? `0x${kc.toString(16)}`);
-    }
-    return names;
+  async getMappedKeys(): Promise<string[]> {
+    return (await this.getMappedCodes()).map((kc) => HWKEY_BY_CODE[kc] ?? `0x${kc.toString(16)}`);
   }
 
-  /** What a given hardware key is currently mapped to (name or "HID xxxxxx"). */
-  getKeyMapping(hwName: string): string {
-    const hw = hwCode(hwName);
-    this.handshake();
-    this.write([...MAPPING_GET, hw]);
-    const r = this.readExpect(MAPPING);
-    const code = (r[3] << 16) | (r[4] << 8) | r[5];
-    return USAGE_BY_CODE[code] ?? `HID ${code.toString(16).padStart(6, '0')}`;
+  /** The 3-byte usage value a hardware key is currently mapped to. */
+  getKeyUsage(hw: string | number): Promise<number> {
+    const code = hwCode(hw);
+    return this.exclusive(async () => {
+      await this.handshake();
+      await this.write([...MAPPING_GET, code]);
+      const r = await this.readExpect(MAPPING);
+      return (r[3] << 16) | (r[4] << 8) | r[5];
+    });
+  }
+
+  /** What a hardware key is currently mapped to: "f16", "cmd+f13", or "HID xxxxxx". */
+  async getKeyMapping(hw: string | number): Promise<string> {
+    return usageName(await this.getKeyUsage(hw));
   }
 
   /** Diagnostic: FULL raw MAPPING_GET response for a key (to inspect chords). */
-  rawKeyMapping(hwName: string): number[] {
-    const hw = hwCode(hwName);
-    this.handshake();
-    this.write([...MAPPING_GET, hw]);
-    return this.read();
+  rawKeyMapping(hw: string | number): Promise<number[]> {
+    const code = hwCode(hw);
+    return this.exclusive(async () => {
+      await this.handshake();
+      await this.write([...MAPPING_GET, code]);
+      return this.read();
+    });
   }
 
   /** Diagnostic: all raw PROFILE_GET_MAPPED frames. */
-  rawMappedFrames(): number[][] {
-    this.handshake();
-    this.write(PROFILE_GET_MAPPED);
-    const frames: number[][] = [];
-    let r = this.read();
-    frames.push(r);
-    while (r.length > 0 && r[r.length - 1] === 0x01) {
-      r = this.read();
+  rawMappedFrames(): Promise<number[][]> {
+    return this.exclusive(async () => {
+      await this.handshake();
+      await this.write(PROFILE_GET_MAPPED);
+      const frames: number[][] = [];
+      let r = await this.read();
       frames.push(r);
-    }
-    return frames;
+      while (r.length > 0 && r[r.length - 1] === 0x01) {
+        r = await this.read();
+        frames.push(r);
+      }
+      return frames;
+    });
   }
 
   // --- WRITES (config-modifying; reverse-engineered, exercise deliberately) ---
@@ -194,50 +215,45 @@ export class Keyboard {
    * 3-byte usages does NOT chord — verified on hardware, the keyboard honours
    * only the first cell.
    */
-  mapRawUsage(hwName: string, usageBytes: number[]): void {
-    const hw = hwCode(hwName);
-    if (usageBytes.length < 1 || usageBytes.length > 24) {
-      throw new Error('Usage buffer must be 1-24 bytes.');
+  mapRawUsage(hw: string | number, bytes: number[]): Promise<void> {
+    // Validate up front so bad input rejects before anything is queued or sent.
+    let code: number;
+    try {
+      code = hwCode(hw);
+      if (bytes.length < 1 || bytes.length > 24) throw new Error('Usage buffer must be 1-24 bytes.');
+    } catch (e) {
+      return Promise.reject(e);
     }
-    this.handshake();
-    this.write([...MAP, hw, ...usageBytes]);
-    this.readExpect(OK);
-    this.write(MAP_DONE);
-    this.readExpect(OK);
+    return this.exclusive(async () => {
+      await this.handshake();
+      await this.write([...MAP, code, ...bytes]);
+      await this.readExpect(OK);
+      await this.write(MAP_DONE);
+      await this.readExpect(OK);
+    });
   }
 
   /** Remap a hardware key to a single 3-byte HID usage code. */
-  mapHidUsage(hwName: string, usageCode: number): void {
-    this.mapRawUsage(hwName, [
-      (usageCode >> 16) & 0xff,
-      (usageCode >> 8) & 0xff,
-      usageCode & 0xff,
-    ]);
+  mapHidUsage(hw: string | number, usageCode: number): Promise<void> {
+    return this.mapRawUsage(hw, usageBytes(usageCode));
   }
 
   /** Remap a hardware key to another key by its USAGE name (e.g. "esc"). */
-  mapKey(hwName: string, targetName: string): void {
+  mapKey(hw: string | number, targetName: string): Promise<void> {
     const u = USAGE[targetName];
-    if (u === undefined) throw new Error(`Unknown target key: ${targetName}`);
-    this.mapHidUsage(hwName, u.code);
+    if (u === undefined) return Promise.reject(new Error(`Unknown target key: ${targetName}`));
+    return this.mapHidUsage(hw, u.code);
   }
 
-  /**
-   * Remap a hardware key to a modifier+key CHORD (e.g. cmd + f13).
-   * Encoding discovered empirically: the 3-byte mapping value is
-   * `07 <modifier-usage> <key-usage>` — the modifier byte slot that a plain key
-   * leaves as 00, and a plain modifier fills while leaving the key slot 00.
-   */
-  mapChord(hwName: string, modName: string, keyName: string): void {
-    const mod = USAGE[MOD_ALIAS[modName] ?? modName];
-    const key = USAGE[keyName];
-    if (!mod) throw new Error(`Unknown modifier: ${modName} (try cmd/opt/ctrl/shift)`);
-    if (!key) throw new Error(`Unknown key: ${keyName}`);
-    const modByte = (mod.code >> 8) & 0xff; // e.g. 0xe3 for Left GUI
-    const keyByte = key.code & 0xff; // e.g. 0x68 for F13
-    if (modByte < 0xe0 || modByte > 0xe7) throw new Error(`${modName} is not a modifier key`);
-    if (((key.code >> 8) & 0xff) !== 0x00) throw new Error(`${keyName} is itself a modifier; pick a normal key`);
-    this.mapRawUsage(hwName, [0x07, modByte, keyByte]);
+  /** Remap a hardware key to a modifier+key CHORD (e.g. cmd + f13). */
+  mapChord(hw: string | number, modName: string, keyName: string): Promise<void> {
+    let code: number;
+    try {
+      code = chordUsage(modName, keyName);
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    return this.mapHidUsage(hw, code);
   }
 
   /**
@@ -245,19 +261,22 @@ export class Keyboard {
    * maps on the keyboard itself — an unnamed profile only exists on the PC, so
    * maps don't take physical effect until the profile is created/named.
    */
-  createProfile(name: string): void {
+  createProfile(name: string): Promise<void> {
     if (name.length < 1 || name.length > 24) {
-      throw new Error('Profile name must be 1-24 characters.');
+      return Promise.reject(new Error('Profile name must be 1-24 characters.'));
     }
-    const nameBytes = Array.from(Buffer.from(name, 'utf16le').swap16());
-    this.handshake();
-    this.write([...PROFILE_RENAME, ...nameBytes]);
-    this.readExpect(OK);
+    return this.exclusive(async () => {
+      await this.handshake();
+      await this.write([...PROFILE_RENAME, ...encodeName(name)]);
+      await this.readExpect(OK);
+    });
   }
 
   /** Delete the current profile, clearing its maps (reverts to default). */
-  deleteProfile(): void {
-    this.write(PROFILE_DELETE);
-    this.readExpect(OK);
+  deleteProfile(): Promise<void> {
+    return this.exclusive(async () => {
+      await this.write(PROFILE_DELETE);
+      await this.readExpect(OK);
+    });
   }
 }

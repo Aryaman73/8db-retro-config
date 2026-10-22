@@ -1,4 +1,5 @@
 import HID from 'node-hid';
+import { Keyboard, type Transport } from './client.ts';
 import {
   VENDOR_ID,
   PRODUCT_IDS,
@@ -34,4 +35,24 @@ export function findConfigDevice(): FoundDevice | undefined {
     interface: d.interface ?? -1,
     usagePage: d.usagePage ?? 0,
   };
+}
+
+/** Transport over node-hid's (synchronous) device API. */
+export function nodeHidTransport(dev: Pick<HID.HID, 'write' | 'readTimeout' | 'close'>): Transport {
+  return {
+    write: async (report) => void dev.write(report),
+    read: async (timeoutMs) => dev.readTimeout(timeoutMs),
+    close: async () => dev.close(),
+  };
+}
+
+/** Open the config interface, or throw a friendly error if not found. */
+export function openKeyboard(): Keyboard {
+  const info = findConfigDevice();
+  if (!info) {
+    throw new Error(
+      'No 8BitDo keyboard config interface found. Connect it via USB-C with the power switch OFF.',
+    );
+  }
+  return new Keyboard(nodeHidTransport(new HID.HID(info.path)));
 }

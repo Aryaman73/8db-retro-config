@@ -7,6 +7,27 @@ userland (no Wine, no kernel extension, no entitlement).
 > Status: **working MVP**. Validated end-to-end on real hardware (N Edition, macOS):
 > reading config and remapping keys both work. See [PLAN.md](./PLAN.md).
 
+## Web app
+**[aryamans.me/8db-retro-config](https://aryamans.me/8db-retro-config/)**: the same
+configurator in the browser, with no install. Click a key on the on-screen keyboard,
+pick what it should send (optionally with one modifier), and save. It also covers the
+external Super Buttons and naming or deleting the profile. Without the hardware, **Try
+the demo** runs it against a simulated keyboard.
+
+It talks to the keyboard directly over [WebHID](https://developer.mozilla.org/docs/Web/API/WebHID_API),
+so it needs **Chrome, Edge, Arc or another Chromium browser** (Safari and Firefox
+don't have WebHID). Chrome allows the vendor config interface (usage page `0x8c`)
+because it only blocks keyboard, mouse and system-control collections. Same hookup as
+the CLI: USB-C, power switch OFF.
+
+Run it locally:
+```sh
+npm install
+npm run dev        # http://localhost:5173 (localhost counts as secure, so WebHID works)
+npm run build      # static site -> dist/
+```
+Pushing to `main` deploys to GitHub Pages via `.github/workflows/deploy.yml`.
+
 ## Requirements
 - Node **≥ 23** (runs the TypeScript sources natively; tested on Node 26).
 - The keyboard connected via **USB-C with the power switch OFF** (= wired/config mode).
@@ -161,6 +182,7 @@ npm test
 ```
 Golden-byte tests in `test/` run the protocol client against a fake HID device and
 assert the exact reports it sends (map, chord, profile) and how it decodes replies.
+`test/demo.test.ts` drives the web app's simulated keyboard with the real client.
 No keyboard required.
 
 ## How it works
@@ -171,9 +193,13 @@ See `src/protocol/consts.ts` and `PLAN.md`.
 
 ## Layout
 - `src/protocol/` — protocol constants + key/usage tables (`keys.ts` is generated).
-- `src/device.ts` — find/open the config interface via `node-hid`.
-- `src/client.ts` — protocol client (reads validated; writes implemented).
+- `src/protocol/usage.ts` — encode/decode mapping values (chords, display names).
+- `src/client.ts` — protocol client over a pluggable async `Transport` (reads
+  validated; writes implemented). Shared by the CLI and the web app.
+- `src/device.ts` — find/open the config interface via `node-hid` (CLI transport).
 - `src/cli.ts` — CLI.
+- `web/` — React + Vite web app: `webhid.ts` (WebHID transport), `demo.ts`
+  (simulated keyboard), `keys.ts` (on-screen layout and labels).
 - `test/` — golden-byte tests (`npm test`).
 - `scripts/` — `probe.cjs` (HID diagnostics), `gen-keys.cjs` (regenerate `keys.ts`),
   `hid-input-monitor.c` (see what a key emits), and the Super-Button RE probes

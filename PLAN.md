@@ -155,9 +155,16 @@ gatekeeps it out of an allowlist.
   drives Wispr. Confirmed keyboard FW = `1.7.7r` (legacy cmd `0x04` = get version).
 </details>
 
-## Phase 4 — Electron GUI
-- Visual keyboard layout → click key → remap; Super Button panel; profiles.
-- Main process owns `node-hid`; renderer = React/Svelte. Handle macOS Input Monitoring UX.
+## Phase 4 — GUI ✅ (web app instead of Electron)
+- **Done:** React + Vite app in `web/`, hosted on GitHub Pages. Visual TKL layout →
+  click key → remap (with one modifier); external Super Button panel; profile name/delete;
+  simulated-keyboard demo mode.
+- **Why not Electron:** WebHID reaches the vendor config interface (usage page `0x8c` isn't
+  in Chromium's protected set; verified on hardware: profile and all 16 maps read
+  byte-identical to the CLI, ~90ms). So it needs no native process, install or code signing.
+  The protocol client became async over a `Transport` (node-hid for the CLI, WebHID for the web).
+- Limits: Chromium browsers only. Mouse-button targets (`btn_*`, 5-byte usages) aren't
+  offered; `mapHidUsage` only encodes 3-byte usages.
 
 ## Phase 5 — Multi-variant + release
 - Add other variants by PID (standard RMK, C64, NES, Retro 108…), each protocol-confirmed.
