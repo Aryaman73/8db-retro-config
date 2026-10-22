@@ -104,15 +104,32 @@ node src/cli.ts map-combo pagedown ctrl f18
 `supera` (hardware code `0x6d`) and `superb` (`0x6c`) are normal mappable hardware
 keys — treat them like any other source in `map`, `map-combo`, or `map-hid`. (These
 are distinct from the *external* 3.5mm Super-Button accessories, which use a separate
-protocol — see [SUPER-BUTTON-PROTOCOL.md](./SUPER-BUTTON-PROTOCOL.md). Those **can't be
-programmed from macOS**: the keyboard's firmware doesn't expose that channel when it's
-plugged into a Mac (verified with direct USB endpoint access via
-`scripts/super-capture.c`). The workaround is a one-time write from the official Windows app in a VM:
-[SUPER-BUTTON-VM-SETUP.md](./SUPER-BUTTON-VM-SETUP.md).)
+protocol — see [SUPER-BUTTON-PROTOCOL.md](./SUPER-BUTTON-PROTOCOL.md). For the **custom profile**
+(heart LED on) you don't need that protocol: see "External Super Buttons" above.)
 ```sh
 node src/cli.ts map supera esc               # plain remap, no modifier
 node src/cli.ts map-combo supera cmd f13     # or a chord, as above
 ```
+
+### External Super Buttons (3.5mm jack) — in your custom profile
+The external buttons are ordinary keys in the custom profile, just with hardware codes
+that aren't in the key table. Address them by raw code:
+
+| code | button (Dual Super Buttons pad) |
+|---|---|
+| `0x75` | left |
+| `0x74` | right |
+
+```sh
+node src/cli.ts map-combo 0x75 cmd f19       # left external button  -> ⌘F19
+node src/cli.ts map-combo 0x74 cmd f20       # right external button -> ⌘F20
+node src/cli.ts profile create main          # then: Profile (heart) LED on
+```
+Same one-modifier limit as any other key. Unmapped, they send **nothing** while the
+heart LED is on. (Fast Key Mapping on the keyboard only applies with the heart LED
+*off*.) Codes `0x6e`–`0x73` are also accepted by the keyboard and are probably the
+other three jacks, but that's unconfirmed. To find a button's code, map candidates to
+digits (`map 0x6e 1`, …), press the button, and see which digit it types.
 
 ### Map to a raw HID usage (escape hatch)
 When a target isn't in the `list-keys` table, write the HID usage bytes directly.

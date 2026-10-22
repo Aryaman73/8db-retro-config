@@ -13,9 +13,10 @@
 //
 // Build: clang scripts/hid-input-monitor.c -o /tmp/hid-mon \
 //              -framework IOKit -framework CoreFoundation
-// Run:   /tmp/hid-mon           # listens ~20s, press the keys under test
+// Run:   /tmp/hid-mon [seconds]  # default 60s, press the keys under test
 
 #include <IOKit/hid/IOHIDManager.h>
+#include <stdlib.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdio.h>
 
@@ -64,15 +65,17 @@ static void input_cb(void *ctx, IOReturn res, void *sender, IOHIDValueRef value)
     uint32_t page = IOHIDElementGetUsagePage(el);
     uint32_t usage = IOHIDElementGetUsage(el);
     CFIndex v = IOHIDValueGetIntegerValue(value);
-    // Only report keyboard (0x07) and consumer (0x0c) pages, on key-DOWN (v!=0).
-    if ((page == 0x07 || page == 0x0c) && v != 0) {
-        const char *name = usage_name(page, usage);
-        printf("page=0x%02x usage=0x%02x val=%ld  %s\n", page, usage, (long)v, name);
-        fflush(stdout);
-    }
+    // Report key-DOWN (v!=0) on EVERY usage page — not just keyboard/consumer —
+    // so buttons that arrive as gamepad/button-page/vendor usages show up too.
+    // Skip the keyboard array's placeholder usages (0x00-0x03 / 0xffffffff).
+    if (v == 0 || usage > 0xffff || (page == 0x07 && usage <= 0x03)) return;
+    const char *name = usage_name(page, usage);
+    printf("page=0x%02x usage=0x%02x val=%ld  %s\n", page, usage, (long)v, name);
+    fflush(stdout);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    double secs = argc > 1 ? atof(argv[1]) : 60.0;
     IOHIDManagerRef mgr = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
     CFMutableDictionaryRef m = CFDictionaryCreateMutable(NULL, 0,
         &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
@@ -86,8 +89,8 @@ int main(void) {
         fprintf(stderr, "IOHIDManagerOpen failed: 0x%08x\n", r);
         return 1;
     }
-    fprintf(stderr, "Listening ~20s. Press the keys under test now...\n");
-    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 20.0, false);
+    fprintf(stderr, "Listening for %.0fs (stops by itself). Press the keys under test now...\n", secs);
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, secs, false);
     fprintf(stderr, "Done.\n");
     return 0;
 }

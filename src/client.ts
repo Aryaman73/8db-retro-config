@@ -27,6 +27,14 @@ function startsWith(buf: number[], prefix: number[]): boolean {
   return true;
 }
 
+/** Resolve a hardware key name, or a raw code like "0x6e" for keys not in the table. */
+function hwCode(hwName: string): number {
+  const named = HWKEY[hwName];
+  if (named !== undefined) return named;
+  if (/^0x[0-9a-f]{1,2}$/i.test(hwName)) return parseInt(hwName, 16);
+  throw new Error(`Unknown hardware key: ${hwName}`);
+}
+
 /** Mac-friendly modifier aliases -> USAGE table name. */
 const MOD_ALIAS: Record<string, string> = {
   cmd: 'leftmeta', command: 'leftmeta', win: 'leftmeta', gui: 'leftmeta',
@@ -148,8 +156,7 @@ export class Keyboard {
 
   /** What a given hardware key is currently mapped to (name or "HID xxxxxx"). */
   getKeyMapping(hwName: string): string {
-    const hw = HWKEY[hwName];
-    if (hw === undefined) throw new Error(`Unknown hardware key: ${hwName}`);
+    const hw = hwCode(hwName);
     this.handshake();
     this.write([...MAPPING_GET, hw]);
     const r = this.readExpect(MAPPING);
@@ -159,8 +166,7 @@ export class Keyboard {
 
   /** Diagnostic: FULL raw MAPPING_GET response for a key (to inspect chords). */
   rawKeyMapping(hwName: string): number[] {
-    const hw = HWKEY[hwName];
-    if (hw === undefined) throw new Error(`Unknown hardware key: ${hwName}`);
+    const hw = hwCode(hwName);
     this.handshake();
     this.write([...MAPPING_GET, hw]);
     return this.read();
@@ -189,8 +195,7 @@ export class Keyboard {
    * only the first cell.
    */
   mapRawUsage(hwName: string, usageBytes: number[]): void {
-    const hw = HWKEY[hwName];
-    if (hw === undefined) throw new Error(`Unknown hardware key: ${hwName}`);
+    const hw = hwCode(hwName);
     if (usageBytes.length < 1 || usageBytes.length > 24) {
       throw new Error('Usage buffer must be 1-24 bytes.');
     }

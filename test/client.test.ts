@@ -83,6 +83,12 @@ test('mapHidUsage: map-to-self clears the override (key -> its own usage)', () =
   assert.deepEqual(writes[1], pad([...MAP, HWKEY.insert, 0x07, 0x00, 0x49]));
 });
 
+test('raw hardware codes ("0x6e") are accepted for keys not in the table', () => {
+  const { kb, writes } = fake([READY, OK, OK]);
+  kb.mapKey('0x6e', '1');
+  assert.deepEqual(writes[1], pad([...MAP, 0x6e, 0x07, 0x00, 0x1e]));
+});
+
 test('mapRawUsage: rejects empty and oversized buffers', () => {
   const { kb } = fake([]);
   assert.throws(() => kb.mapRawUsage('a', []), /1-24 bytes/);

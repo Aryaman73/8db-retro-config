@@ -1,5 +1,10 @@
 # External Super-Button Protocol — reverse-engineering notes
 
+> **2026-10-22 — you probably don't need this protocol.** For the custom profile
+> (heart LED on), the external buttons are ordinary profile keys at hardware codes
+> **`0x75` (left) / `0x74` (right)**, programmable with the normal `0x52` MAP command
+> (`map-combo 0x75 cmd f19`). See README / PLAN Phase 3.5.
+
 Status: **protocol decoded, but the keyboard doesn't speak it as it enumerates on
 macOS.** The earlier "macOS driver wall" theory is **disproven** (2026-10-21): with
 device capture we reach iface 2's interrupt endpoints directly from macOS, and the

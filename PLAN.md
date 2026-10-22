@@ -84,7 +84,15 @@ gatekeeps it out of an allowlist.
   arbitrary chords to the Super buttons. For the user's Wispr Flow need, just
   hardware-map a Super button to an unused "hyper" chord and bind the app to it.
 
-## Phase 3.5 — External Super Buttons (3.5mm jack)  ⛔ BLOCKED on macOS — next: Windows VM
+## Phase 3.5 — External Super Buttons (3.5mm jack)  ✅ SOLVED for the custom profile
+- **2026-10-22 — external buttons are plain hardware codes in the profile MAP.** With the
+  heart LED on they send nothing until mapped. Mapping candidate unused codes to digits
+  and pressing the buttons found: **left = `0x75`, right = `0x74`** (one Dual Super
+  Buttons pad). `0x6e`–`0x73` are accepted too, probably the other jacks (unconfirmed).
+  So `map` / `map-combo 0x75 …` works from macOS today (raw `0x..` codes are now accepted
+  as hardware keys). No Advance/`0x81` channel, VM or Windows needed for this.
+- The Advance/`0x81` work below is now only relevant to whatever that store drives
+  (possibly the default-profile / Fast Key Mapping layer or wireless accessories).
 - **2026-10-21 — "macOS driver wall" DISPROVEN, real blocker is the firmware.**
   `scripts/super-capture.c` (libusb device capture, `sudo`) claims iface 2 and writes
   its interrupt-OUT endpoint directly. Legacy `0x52` commands work there; Advance
@@ -159,7 +167,8 @@ gatekeeps it out of an allowlist.
 2. ~~N Edition protocol == standard RMK~~ — RESOLVED (Phase 0).
 3. ~~On-board Super A/B / chords unreachable~~ — RESOLVED. Single-key AND
    single-modifier chords work via the profile MAP command (`07 <mod> <key>`).
-3b. **External 3.5mm Super Buttons** — OPEN. Unreachable from macOS userland (exclusive
+3b. **External 3.5mm Super Buttons** — RESOLVED for the custom profile (codes `0x74`/`0x75`).
+   The Advance channel itself is still OPEN. Unreachable from macOS userland (exclusive
    firmware doesn't expose the Advance channel as it enumerates on macOS — verified
    with direct endpoint access); workaround is the Windows VM (Phase 3.5).
 3c. **Multi-modifier chords** — OPEN (Phase 3).
