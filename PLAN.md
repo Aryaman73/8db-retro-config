@@ -38,7 +38,8 @@ gatekeeps it out of an allowlist.
   is **named** AND the Profile (heart) button LED is **on**.
 - ✅ Undo = map a key to itself (clears the override), `profile delete`, or toggle
   the Profile LED off.
-- ✅ In daily use: Super A = ⌘+F13 (Wispr); nav cluster → F16-F18 / ⌃F16-⌃F18 (Rectangle).
+- ✅ In daily use: Super A and both external buttons (`0x75`/`0x74`) = ⌘+F13 (Wispr);
+  nav cluster → F16-F18 / ⌃F16-⌃F18 (Rectangle).
 
 ## Phase 2 — Harden the TS HID core  ← NEXT
 - ✅ Golden-byte tests (`npm test`, `test/client.test.ts`): a fake HID device asserts
