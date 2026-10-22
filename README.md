@@ -78,11 +78,36 @@ node src/cli.ts map-combo a opt 5            # any key works as the source, too
 The third arg (the key) must be a normal key, not another modifier — `f13`, `space`,
 `q`, `5`, etc. Run `list-keys` for the full target list.
 
+### Limits & macOS gotchas (all confirmed on hardware)
+- **One modifier per key, max.** Each mapping is a single `07 <mod> <key>` cell, so
+  ⌘+F13 works but ⌃⌥⌘+F13 ("hyper") does not. Writing several cells via `map-hid` just
+  keeps the first one. (Multi-modifier support is an open RE item — see PLAN.md.)
+- **F21-F24 are invisible on macOS.** They're valid USB HID, but macOS never maps them,
+  so apps like Rectangle or Raycast can't bind them.
+- **F14/F15 change screen brightness on macOS**, even with a modifier held (⌃F14 still
+  dims). Don't use them as targets. Physical ScrLk/Pause send F14/F15 by default.
+- **Safe "spare" targets on a Mac: F13 and F16-F20**, bare or with one modifier.
+
+### Example: nav cluster → Rectangle window thirds
+Six spare hotkeys from the Insert/Home/PgUp/Delete/End/PgDn block, then bind them in
+Rectangle:
+```sh
+node src/cli.ts map insert f16
+node src/cli.ts map home f17
+node src/cli.ts map pageup f18
+node src/cli.ts map-combo delete ctrl f16
+node src/cli.ts map-combo end ctrl f17
+node src/cli.ts map-combo pagedown ctrl f18
+```
+
 ### The on-board Super keys
 `supera` (hardware code `0x6d`) and `superb` (`0x6c`) are normal mappable hardware
 keys — treat them like any other source in `map`, `map-combo`, or `map-hid`. (These
 are distinct from the *external* 3.5mm Super-Button accessories, which use a separate
-protocol — see [SUPER-BUTTON-PROTOCOL.md](./SUPER-BUTTON-PROTOCOL.md).)
+protocol — see [SUPER-BUTTON-PROTOCOL.md](./SUPER-BUTTON-PROTOCOL.md). Those **can't be
+programmed from macOS** — the channel is claimed exclusively by the OS HID driver. The
+workaround is a one-time write from the official Windows app in a VM:
+[SUPER-BUTTON-VM-SETUP.md](./SUPER-BUTTON-VM-SETUP.md).)
 ```sh
 node src/cli.ts map supera esc               # plain remap, no modifier
 node src/cli.ts map-combo supera cmd f13     # or a chord, as above
@@ -103,6 +128,23 @@ node src/cli.ts profile delete               # wipe the profile -> back to facto
 #                                              or just press the Profile button to toggle the LED off
 ```
 
+## Verifying what a key actually sends
+`scripts/hid-input-monitor.c` is a passive (non-seizing) IOHIDManager listener that
+prints the HID usages a physical key emits — handy for confirming a mapping took
+effect at the byte level. macOS may ask for **Input Monitoring** permission.
+```sh
+clang -framework IOKit -framework CoreFoundation scripts/hid-input-monitor.c -o /tmp/hid-mon
+/tmp/hid-mon
+```
+
+## Tests
+```sh
+npm test
+```
+Golden-byte tests in `test/` run the protocol client against a fake HID device and
+assert the exact reports it sends (map, chord, profile) and how it decodes replies.
+No keyboard required.
+
 ## How it works
 The keyboard exposes three USB interfaces; **interface #2** (HID usage page `0x8c`)
 is a vendor config channel. Commands are HID reports whose first byte is the report
@@ -114,7 +156,10 @@ See `src/protocol/consts.ts` and `PLAN.md`.
 - `src/device.ts` — find/open the config interface via `node-hid`.
 - `src/client.ts` — protocol client (reads validated; writes implemented).
 - `src/cli.ts` — CLI.
-- `scripts/` — `probe.cjs` (HID diagnostics), `gen-keys.cjs` (regenerate `keys.ts`).
+- `test/` — golden-byte tests (`npm test`).
+- `scripts/` — `probe.cjs` (HID diagnostics), `gen-keys.cjs` (regenerate `keys.ts`),
+  `hid-input-monitor.c` (see what a key emits), and the Super-Button RE probes
+  (`probe-super*.cjs`, `super-iokit.c`, `super-usb.c`, `hid-descriptors.py`).
 - `reference/` — upstream `keys.py` for provenance.
 
 ## Safety

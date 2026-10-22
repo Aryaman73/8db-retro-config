@@ -32,15 +32,20 @@ gatekeeps it out of an allowlist.
 - 🔎 Finding: the Python tool's libusb path is Linux-oriented; on macOS the
   IOHIDManager/`node-hid` path is the one that works — reinforces the TS-core plan.
 
-## Phase 1 — Working remap MVP  ← NEXT
-- Implement + hardware-test the `map` WRITE path (already coded in `client.ts`,
-  not yet exercised against hardware).
-- First confirm the **factory-reset combo** for the N Edition as an undo before any write.
-- Wire `map` / `map-hid` into the CLI. Deliverable: remap your N Edition from your Mac.
+## Phase 1 — Working remap MVP  ✅ DONE
+- ✅ `map` / `map-hid` WRITE path validated on hardware; wired into the CLI.
+- ✅ `profile create/delete`. Gotcha: maps only take physical effect once the profile
+  is **named** AND the Profile (heart) button LED is **on**.
+- ✅ Undo = map a key to itself (clears the override), `profile delete`, or toggle
+  the Profile LED off.
+- ✅ In daily use: Super A = ⌘+F13 (Wispr); nav cluster → F16-F18 / ⌃F16-⌃F18 (Rectangle).
 
-## Phase 2 — Harden the TS HID core
-- Golden-byte tests: capture exact command bytes and assert the core reproduces them.
-- Robust read timing / retries; profile create/delete.
+## Phase 2 — Harden the TS HID core  ← NEXT
+- ✅ Golden-byte tests (`npm test`, `test/client.test.ts`): a fake HID device asserts
+  the exact reports for map / chord / profile writes and decodes reads. No hardware.
+- Robust read timing / retries.
+- Optional: capture real response frames into fixtures (the current read fixtures
+  are hand-built from the decoder's expectations).
 
 ## Phase 3 — Macros / chords  ✅ SINGLE-MODIFIER CHORDS SOLVED
 - **CRACKED (no Windows capture needed):** the existing 3-byte mapping value is
@@ -48,9 +53,16 @@ gatekeeps it out of an allowlist.
   (`07 00 04` = a); a plain modifier leaves the key byte 00 (`07 e2 00` = LAlt);
   a CHORD fills both (`07 e3 68` = ⌘+F13). Verified on hardware: superb=`07 e3 04`
   physically fires ⌘+A. Implemented as `map-combo <key> <mod> <key>` / `mapChord()`.
-- Open: multi-modifier chords (e.g. ⌃⌥⌘ hyper) — only one modifier byte slot is
-  known; may need the 12-byte buffer (`0x0c` header) or extra slots. Single
-  modifier+key covers the Wispr use case.
+- **Limit — ONE modifier per key.** Confirmed on hardware: concatenating cells
+  (e.g. ⌃+⌥+E) keeps only the first (registered as bare ⌃). Multi-modifier chords
+  (e.g. ⌃⌥⌘ hyper) need the un-reversed macro/length-field write format. A Windows-VM
+  USB capture of the official app (Phase 3.5 path) is the likeliest way to crack it.
+- **macOS target-key pitfalls:**
+  - **F21-F24** exist in USB HID but macOS never maps them — apps can't see them.
+  - **F14/F15** = brightness down/up on macOS, and a modifier does NOT suppress it
+    (⌃F14 still dims). Avoid as targets.
+  - Safe "unused" targets: **F13, F16-F20** (with or without one modifier).
+- Single modifier+key covers the Wispr use case.
 - Historic note (now moot for single-mod chords):
 - **Finding:** the Super Buttons themselves (`supera` 0x6d, `superb` 0x6c) ARE
   remappable via the normal single-key MAP path — no special protocol needed for
@@ -72,7 +84,7 @@ gatekeeps it out of an allowlist.
   arbitrary chords to the Super buttons. For the user's Wispr Flow need, just
   hardware-map a Super button to an unused "hyper" chord and bind the app to it.
 
-## Phase 3.5 — External Super Buttons (3.5mm jack)  ✅ DIAGNOSED — macOS driver-model wall
+## Phase 3.5 — External Super Buttons (3.5mm jack)  ⛔ BLOCKED on macOS — next: Windows VM
 - **2026-07-06 (grounded in the WINDOWS DLL — the N Edition's real reference):** the
   keyboard's super-button transport is a **64-byte report `0x81` on iface 2 (usagePage
   `0x8c`)**, delivered on Windows via `WriteFile`/`ReadFile` = the **interrupt OUT/IN
@@ -88,6 +100,8 @@ gatekeeps it out of an allowlist.
   (2) a DriverKit dext claiming iface 2 (pipe logic ready in `super-usb.c`). NOTE: the
   *macOS* app `S68KBSuperKeyExtenseVC` (Feature/0x81) targets a DIFFERENT 8BitDo keyboard
   — not authoritative for the N Edition. Details in `SUPER-BUTTON-PROTOCOL.md`.
+- **Next action:** follow `SUPER-BUTTON-VM-SETUP.md` (UTM, QEMU backend, USB passthrough)
+  to program the buttons once with the official app, and capture the bytes while there.
 
 <details><summary>Prior investigation notes (superseded)</summary>
 - The big circular A/B accessories are a **separate, UUID-addressed store** with its
@@ -134,6 +148,9 @@ gatekeeps it out of an allowlist.
 ## Risks
 1. ~~macOS HID access~~ — RESOLVED (Phase 0).
 2. ~~N Edition protocol == standard RMK~~ — RESOLVED (Phase 0).
-3. ~~Super Buttons / chords unreachable~~ — RESOLVED. Single-key AND single-modifier
-   chords work via the profile MAP command (`07 <mod> <key>`). No capture needed.
-4. TS port fidelity — mitigated by golden-byte tests (Phase 2).
+3. ~~On-board Super A/B / chords unreachable~~ — RESOLVED. Single-key AND
+   single-modifier chords work via the profile MAP command (`07 <mod> <key>`).
+3b. **External 3.5mm Super Buttons** — OPEN. Unreachable from macOS userland (exclusive
+   driver claim on the interrupt endpoint); workaround is the Windows VM (Phase 3.5).
+3c. **Multi-modifier chords** — OPEN (Phase 3).
+4. TS port fidelity — mitigated by golden-byte tests (Phase 2, `npm test`).

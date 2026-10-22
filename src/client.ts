@@ -19,6 +19,9 @@ import {
 } from './protocol/consts.ts';
 import { HWKEY, HWKEY_BY_CODE, USAGE, USAGE_BY_CODE } from './protocol/keys.ts';
 
+/** The slice of node-hid's device API the client uses (lets tests inject a fake). */
+export type HidDevice = Pick<HID.HID, 'write' | 'readTimeout' | 'close'>;
+
 function startsWith(buf: number[], prefix: number[]): boolean {
   for (let i = 0; i < prefix.length; i++) if (buf[i] !== prefix[i]) return false;
   return true;
@@ -39,10 +42,15 @@ const MOD_ALIAS: Record<string, string> = {
  * reverse-engineered protocol but should be exercised deliberately.
  */
 export class Keyboard {
-  private dev: HID.HID;
+  private dev: HidDevice;
 
-  private constructor(dev: HID.HID) {
+  private constructor(dev: HidDevice) {
     this.dev = dev;
+  }
+
+  /** Wrap an already-open device (used by tests to inject a fake). */
+  static fromDevice(dev: HidDevice): Keyboard {
+    return new Keyboard(dev);
   }
 
   /** Open the config interface, or throw a friendly error if not found. */
@@ -176,8 +184,9 @@ export class Keyboard {
 
   /**
    * Remap a hardware key to a raw usage buffer (1..24 bytes). A single key is
-   * 3 bytes (e.g. 07 00 68 = F13). Multiple concatenated 3-byte usages are the
-   * hypothesised macro/chord encoding (e.g. 07 e3 00 | 07 00 68 = GUI + F13).
+   * 3 bytes (e.g. 07 00 68 = F13; 07 e3 68 = ⌘+F13). Concatenating several
+   * 3-byte usages does NOT chord — verified on hardware, the keyboard honours
+   * only the first cell.
    */
   mapRawUsage(hwName: string, usageBytes: number[]): void {
     const hw = HWKEY[hwName];
@@ -220,7 +229,7 @@ export class Keyboard {
     if (!mod) throw new Error(`Unknown modifier: ${modName} (try cmd/opt/ctrl/shift)`);
     if (!key) throw new Error(`Unknown key: ${keyName}`);
     const modByte = (mod.code >> 8) & 0xff; // e.g. 0xe3 for Left GUI
-    const keyByte = key.code & 0xff; // e.g. 0x76 for F13
+    const keyByte = key.code & 0xff; // e.g. 0x68 for F13
     if (modByte < 0xe0 || modByte > 0xe7) throw new Error(`${modName} is not a modifier key`);
     if (((key.code >> 8) & 0xff) !== 0x00) throw new Error(`${keyName} is itself a modifier; pick a normal key`);
     this.mapRawUsage(hwName, [0x07, modByte, keyByte]);

@@ -10,7 +10,8 @@
     "status": "node src/cli.ts status",
     "list-keys": "node src/cli.ts list-keys",
     "probe": "node scripts/probe.cjs",
-    "gen-keys": "node scripts/gen-keys.cjs"
+    "gen-keys": "node scripts/gen-keys.cjs",
+    "test": "node --test \"test/**/*.test.ts\""
   },
   "engines": {
     "node": ">=23"
