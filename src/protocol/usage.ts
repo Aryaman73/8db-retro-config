@@ -1,6 +1,6 @@
 // Helpers for encoding/decoding the 3-byte mapping values the keyboard stores.
 // Pure data — no Node or browser APIs — so the CLI and the web app share it.
-import { USAGE, USAGE_BY_CODE } from './keys.ts';
+import { HWKEY_BY_CODE, USAGE, USAGE_BY_CODE } from './keys.ts';
 
 /** Mac-friendly modifier aliases -> USAGE table name. */
 export const MOD_ALIAS: Record<string, string> = {
@@ -56,4 +56,10 @@ export function usageName(code: number): string {
   const chord = parseChord(code);
   if (chord) return `${chord.mod}+${chord.key}`;
   return `HID ${code.toString(16).padStart(6, '0')}`;
+}
+
+/** What a key sends when it isn't remapped: the usage of the same name, or nothing. */
+export function defaultUsage(hw: number): number {
+  const name = HWKEY_BY_CODE[hw];
+  return (name ? USAGE[name]?.code : undefined) ?? 0x070000; // unmapped external buttons send nothing
 }

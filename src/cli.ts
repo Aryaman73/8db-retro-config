@@ -1,7 +1,8 @@
 // Minimal CLI. Run with Node 26 (native TS): `node src/cli.ts <command>`
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { findConfigDevice, openKeyboard } from './device.ts';
 import { HWKEY, USAGE } from './protocol/keys.ts';
+import { applyProfile, parseProfile, readProfile, toFile } from './profile.ts';
 
 const hex = (a: number[]) => Buffer.from(a).toString('hex');
 
@@ -146,6 +147,30 @@ async function cmdProfileDelete(): Promise<void> {
   }
 }
 
+async function cmdExport(file?: string): Promise<void> {
+  const kb = openKeyboard();
+  try {
+    const json = JSON.stringify(toFile(await readProfile(kb)), null, 2) + '\n';
+    if (!file) return void process.stdout.write(json);
+    writeFileSync(file, json);
+    console.log(`Saved profile -> ${file}`);
+  } finally {
+    await kb.close();
+  }
+}
+
+async function cmdImport(file: string): Promise<void> {
+  const profile = parseProfile(readFileSync(file, 'utf8'));
+  const kb = openKeyboard();
+  try {
+    const writes = await applyProfile(kb, profile);
+    console.log(`Applied ${file}: ${writes} key(s) written, ${profile.maps.size} remapped in total.`);
+    console.log('Profile name now reads:', await kb.getProfileName());
+  } finally {
+    await kb.close();
+  }
+}
+
 async function main(): Promise<void> {
   const [cmd, a, b] = process.argv.slice(2);
   switch (cmd) {
@@ -153,6 +178,13 @@ async function main(): Promise<void> {
       if (a === 'create' && b) await cmdProfileCreate(b);
       else if (a === 'delete') await cmdProfileDelete();
       else console.log('Usage: profile create <name> | profile delete');
+      break;
+    case 'export':
+      await cmdExport(a);
+      break;
+    case 'import':
+      if (!a) return void console.log('Usage: import <file.json>');
+      await cmdImport(a);
       break;
     case 'status':
       await cmdStatus();
@@ -185,7 +217,7 @@ async function main(): Promise<void> {
       break;
     }
     default:
-      console.log('Usage: node src/cli.ts <status|list-keys|get|map|map-hid|profile>');
+      console.log('Usage: node src/cli.ts <status|list-keys|get|map|map-combo|map-hid|profile|export|import>');
   }
 }
 

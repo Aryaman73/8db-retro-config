@@ -1,4 +1,5 @@
-import { BOARD_H, BOARD_W, EXTERNAL, LAYOUT, defaultUsage, hwLabel, usageLabel } from './keys.ts';
+import { useState } from 'react';
+import { BOARD_H, BOARD_W, LAYOUT, SUPER_SLOTS, defaultUsage, hwLabel, usageLabel, type SuperSlot } from './keys.ts';
 
 interface Props {
   maps: Map<number, number>;
@@ -42,31 +43,54 @@ export function Board({ maps, selected, onSelect }: Props) {
   );
 }
 
-export function ExternalButtons({ maps, selected, onSelect }: Props) {
+function SlotButton({ slot, maps, selected, onSelect }: Props & { slot: SuperSlot }) {
+  const mapped = isRemapped(maps, slot.hw);
+  return (
+    <button
+      type="button"
+      className={`ext${mapped ? ' remapped' : ''}${selected === slot.hw ? ' selected' : ''}`}
+      aria-pressed={selected === slot.hw}
+      onClick={() => onSelect(slot.hw)}
+    >
+      <span className="ext-dot" aria-hidden />
+      <span className="ext-text">
+        <span>{slot.label}</span>
+        <span className="ext-target">{mapped ? usageLabel(maps.get(slot.hw)!) : 'sends nothing'}</span>
+      </span>
+    </button>
+  );
+}
+
+export function ExternalButtons(props: Props) {
+  const extraMapped = SUPER_SLOTS.some((s) => s.pad > 1 && isRemapped(props.maps, s.hw));
+  const [showAll, setShowAll] = useState(false);
+  const expanded = showAll || extraMapped;
+  const pads = expanded ? [1, 2, 3, 4] : [1];
+
   return (
     <div className="externals">
-      <div className="externals-text">
-        <strong>Super Buttons</strong>
-        <span>3.5mm jack accessory</span>
-      </div>
-      {EXTERNAL.map((b) => {
-        const mapped = isRemapped(maps, b.hw);
-        return (
-          <button
-            key={b.hw}
-            type="button"
-            className={`ext${mapped ? ' remapped' : ''}${selected === b.hw ? ' selected' : ''}`}
-            aria-pressed={selected === b.hw}
-            onClick={() => onSelect(b.hw)}
-          >
-            <span className="ext-dot" aria-hidden />
-            <span className="ext-text">
-              <span>{b.label}</span>
-              <span className="ext-target">{mapped ? usageLabel(maps.get(b.hw)!) : 'sends nothing'}</span>
-            </span>
-          </button>
-        );
-      })}
+      {pads.map((pad) => (
+        <div key={pad} className="pad">
+          <div className="externals-text">
+            <strong>{pad === 1 ? 'Super Buttons' : `Pad ${pad}`}</strong>
+            <span>{pad === 1 ? '3.5mm jack accessory' : 'untested'}</span>
+          </div>
+          {SUPER_SLOTS.filter((s) => s.pad === pad).map((slot) => (
+            <SlotButton key={slot.hw} slot={slot} {...props} />
+          ))}
+        </div>
+      ))}
+      {!extraMapped && (
+        <button type="button" className="btn subtle more-slots" onClick={() => setShowAll(!expanded)}>
+          {expanded ? 'Fewer slots' : 'More Super Button slots'}
+        </button>
+      )}
+      {expanded && (
+        <p className="hint">
+          Pads 2–4 use codes from 8BitDo’s own app but haven’t been tested on hardware. Only the first pair is
+          confirmed.
+        </p>
+      )}
     </div>
   );
 }

@@ -645,6 +645,22 @@ export const USAGE: Record<string, { code: number; desc: string }> = {
   "btn_side": {
     "code": 1168231104512,
     "desc": "mouse button 5"
+  },
+  "brightnessdown": {
+    "code": 815104,
+    "desc": "Display Brightness Decrement"
+  },
+  "brightnessup": {
+    "code": 814848,
+    "desc": "Display Brightness Increment"
+  },
+  "mail": {
+    "code": 821761,
+    "desc": "AL Email Reader"
+  },
+  "homepage": {
+    "code": 795394,
+    "desc": "AC Home"
   }
 };
 

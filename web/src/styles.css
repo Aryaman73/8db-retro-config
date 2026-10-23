@@ -424,11 +424,31 @@ button {
 
 .externals {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 0 4px;
+}
+
+.pad {
+  display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 18px;
-  padding: 0 4px;
+}
+
+.pad .externals-text {
+  min-width: 150px;
+}
+
+.more-slots {
+  font-size: 0.82rem;
+  padding: 0.3rem 0.6rem;
+}
+
+.externals .hint {
+  margin: 0;
 }
 
 .externals-text {
@@ -698,6 +718,23 @@ button {
 
 .danger-zone {
   font-size: 0.85rem;
+}
+
+.backup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.backup .muted {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.backup .hint {
+  margin: 0;
 }
 
 .tips ul {

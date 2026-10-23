@@ -70,8 +70,10 @@ The canonical configurator for this keyboard is **8BitDo Ultimate Software V2
 native Swift app that gate-keeps the N Edition out at device-recognition, but its
 `S68KBSuperKeyExtenseVC` confirms the same model.
 
-- Managed namespace: `AdvanceSuper.*`. Keyboard driver: `AdvanceSuper.Advances.JP68Advance`
-  (internal codename **JP68 / S68** = the Retro Mechanical Keyboard).
+- Managed namespace: `AdvanceSuper.*`. **Correction (2026-10-22):** this keyboard's driver is
+  `AdvanceSuper.Advances.JPAdvance` (`PID_JP = 0x5200`). `JP68Advance` (`PID_68JP`), which
+  earlier notes here treated as ours, is a different 8BitDo keyboard. The Advance-command
+  analysis below came from the shared native DLL, so it still describes that code path.
 - The super-button calls are `[DllImport("8BitDoAdvance.dll")]` P/Invokes into the
   **native** `8BitDoAdvance.dll` (PE32 x86), which builds the HID reports.
 

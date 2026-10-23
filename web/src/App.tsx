@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Keyboard } from '../../src/client.ts';
+import { applyProfile, toFile, type Profile } from '../../src/profile.ts';
 import { Board, ExternalButtons, isRemapped } from './Board.tsx';
 import { KeyEditor } from './KeyEditor.tsx';
 import { ProfilePanel } from './ProfilePanel.tsx';
@@ -150,6 +151,24 @@ export default function App() {
 
   const remaps = [...maps.keys()].filter((hw) => isRemapped(maps, hw));
 
+  function exportProfile() {
+    const file = toFile({ name: profile, maps: new Map(remaps.map((hw) => [hw, maps.get(hw)!])) });
+    const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2) + '\n'], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(profile ?? 'profile').replace(/[^\w.-]+/g, '_')}.8bitdo.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function importProfile(p: Profile) {
+    setSelected(null);
+    void act(
+      p.name ? `Loaded “${p.name}”. Turn the ♥ LED on to use it.` : 'Loaded. Name the profile to make it live.',
+      async (kb) => void (await applyProfile(kb, p)),
+    );
+  }
+
   return (
     <div className="app">
       <header className="top">
@@ -288,6 +307,8 @@ export default function App() {
                 onSave={(name) =>
                   act(`Profile “${name}” saved. Turn the ♥ LED on to use it.`, (kb) => kb.createProfile(name))
                 }
+                onExport={exportProfile}
+                onImport={importProfile}
                 onDelete={() => {
                   setSelected(null);
                   void act('Profile deleted. The keyboard is back to its default layout.', (kb) =>

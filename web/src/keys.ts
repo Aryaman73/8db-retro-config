@@ -3,6 +3,8 @@
 import { HWKEY, HWKEY_BY_CODE, USAGE, USAGE_BY_CODE } from '../../src/protocol/keys.ts';
 import { parseChord } from '../../src/protocol/usage.ts';
 
+export { defaultUsage } from '../../src/protocol/usage.ts';
+
 export type Cap = 'light' | 'dark' | 'red';
 
 export interface KeyDef {
@@ -75,15 +77,30 @@ export const LAYOUT: KeyDef[] = [
     ['superb', 1.25], ['supera', 1.25], ['rightctrl', 1.25], NAV, ...k('left', 'down', 'right')]),
 ];
 
-/** External 3.5mm Super Buttons, addressed by raw code in the custom profile. */
-export const EXTERNAL: { hw: number; label: string }[] = [
-  { hw: 0x75, label: 'Left' },
-  { hw: 0x74, label: 'Right' },
+/**
+ * External 3.5mm Super Button slots, addressed by raw code in the custom
+ * profile. The official app has eight (K1-K8). Only pad 1 is verified on
+ * hardware; the rest come from the app's table, so they're marked untested.
+ */
+export interface SuperSlot {
+  hw: number;
+  label: string;
+  pad: number;
+}
+export const SUPER_SLOTS: SuperSlot[] = [
+  { hw: 0x75, label: 'Left', pad: 1 },
+  { hw: 0x74, label: 'Right', pad: 1 },
+  { hw: 0x72, label: 'Slot 3', pad: 2 },
+  { hw: 0x73, label: 'Slot 4', pad: 2 },
+  { hw: 0x70, label: 'Slot 5', pad: 3 },
+  { hw: 0x71, label: 'Slot 6', pad: 3 },
+  { hw: 0x6e, label: 'Slot 7', pad: 4 },
+  { hw: 0x6f, label: 'Slot 8', pad: 4 },
 ];
 
 const BY_HW = new Map<number, string>([
   ...LAYOUT.map((d) => [d.hw, d.label] as const),
-  ...EXTERNAL.map((d) => [d.hw, `${d.label} Super Button`] as const),
+  ...SUPER_SLOTS.map((d) => [d.hw, d.pad === 1 ? `${d.label} Super Button` : `Super ${d.label.toLowerCase()}`] as const),
 ]);
 
 /** Display name for a hardware key. */
@@ -95,12 +112,6 @@ export function hwLabel(hw: number): string {
   const l = BY_HW.get(hw);
   if (l && /^(Shift|Ctrl|Alt)$/.test(l)) return `${name?.startsWith('right') ? 'Right' : 'Left'} ${l}`;
   return l || name || `0x${hw.toString(16)}`;
-}
-
-/** What a key sends when it isn't remapped (the usage of the same name). */
-export function defaultUsage(hw: number): number {
-  const name = HWKEY_BY_CODE[hw];
-  return (name ? USAGE[name]?.code : undefined) ?? 0x070000; // unmapped external buttons send nothing
 }
 
 // --- targets -----------------------------------------------------------------
@@ -115,6 +126,7 @@ const SHORT_MOD: Record<string, string> = {
 const TARGET_LABEL: Record<string, string> = {
   none: 'Nothing', compose: 'Menu', playpause: 'Play/Pause', nextsong: 'Next', previoussong: 'Prev',
   mute: 'Mute', volumeup: 'Vol +', volumedown: 'Vol −', calc: 'Calc', sysrq: 'PrtSc',
+  brightnessdown: 'Bright −', brightnessup: 'Bright +', mail: 'Mail', homepage: 'Browser',
   scrolllock: 'ScrLk', '102nd': 'ISO \\', hashtilde: 'ISO #', numlock: 'NumLk',
   kpslash: 'KP /', kpasterisk: 'KP *', kpminus: 'KP −', kpplus: 'KP +', kpenter: 'KP Enter', kpdot: 'KP .',
   space: 'Space', leftmeta: '⌘ Cmd', leftalt: '⌥ Opt', leftctrl: '⌃ Ctrl', leftshift: '⇧ Shift',
@@ -151,7 +163,8 @@ export const TARGET_GROUPS: { title: string; names: string[] }[] = [
     'home', 'end', 'pageup', 'pagedown', 'up', 'down', 'left', 'right', 'prtsc', 'scrlk', 'pause', 'compose'] },
   { title: 'Symbols', names: ['grave', 'minus', 'equal', 'leftbrace', 'rightbrace', 'backslash', 'semicolon',
     'apostrophe', 'comma', 'dot', 'slash', '102nd', 'hashtilde'] },
-  { title: 'Media', names: ['playpause', 'previoussong', 'nextsong', 'mute', 'volumedown', 'volumeup', 'calc'] },
+  { title: 'Media & system', names: ['playpause', 'previoussong', 'nextsong', 'mute', 'volumedown', 'volumeup',
+    'brightnessdown', 'brightnessup', 'calc', 'mail', 'homepage'] },
   { title: 'Keypad', names: ['numlock', 'kpslash', 'kpasterisk', 'kpminus', 'kpplus', 'kpenter',
     ...range('kp', 0, 9), 'kpdot'] },
   { title: 'Other', names: ['none'] },

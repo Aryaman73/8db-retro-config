@@ -26,6 +26,17 @@ for (let i = 0; i <= 11; i++) {
   if (usage[name]) usage[name] = { code: 0x070068 + i, desc: `Keyboard F${13 + i}` };
 }
 
+// ADDITIONS from the official app's target table (Ultimate Software V2 1.33,
+// KeyBoardTools.getuint): consumer-page keys in the same byte-swapped form as
+// "calc" above (0c <usage lo> <usage hi>).
+const EXTRA = {
+  brightnessdown: [0x0c7000, 'Display Brightness Decrement'],
+  brightnessup: [0x0c6f00, 'Display Brightness Increment'],
+  mail: [0x0c8a01, 'AL Email Reader'],
+  homepage: [0x0c2302, 'AC Home'],
+};
+for (const [name, [code, desc]] of Object.entries(EXTRA)) usage[name] = { code, desc };
+
 const out = `// AUTO-GENERATED from reference/keys.py by scripts/gen-keys.js. Do not edit by hand.
 // Source protocol/key tables: github.com/goncalor/8bitdo-kbd-mapper (see NOTICE).
 

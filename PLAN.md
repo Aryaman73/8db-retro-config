@@ -165,6 +165,14 @@ gatekeeps it out of an allowlist.
   The protocol client became async over a `Transport` (node-hid for the CLI, WebHID for the web).
 - Limits: Chromium browsers only. Mouse-button targets (`btn_*`, 5-byte usages) aren't
   offered; `mapHidUsage` only encodes 3-byte usages.
+- **Parity with the official app (2026-10-22, from decompiling Win V1.33):** for PID 0x5200
+  it offers mapping (keys, media "shortcuts", mouse), 8 macros, profile files, firmware
+  update. Knob-volume steps and sleep timers exist only for other models (PID_68JP,
+  PID_ASLGJP), so there's nothing to match there. Done: all 8 Super Button slots
+  (0x6e–0x75, pads 2–4 untested), brightness/mail/home targets, JSON profile
+  export/import (CLI + web). Open: mouse targets (5-byte `01 <btn> 00 <wheel> <hwheel>`,
+  needs a hardware test), macros (write format unreversed; also the likely route to
+  multi-modifier chords).
 
 ## Phase 5 — Multi-variant + release
 - Add other variants by PID (standard RMK, C64, NES, Retro 108…), each protocol-confirmed.

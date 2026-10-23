@@ -11,7 +11,8 @@ userland (no Wine, no kernel extension, no entitlement).
 **[aryamans.me/8db-retro-config](https://aryamans.me/8db-retro-config/)**: the same
 configurator in the browser, with no install. Click a key on the on-screen keyboard,
 pick what it should send (optionally with one modifier), and save. It also covers the
-external Super Buttons and naming or deleting the profile. Without the hardware, **Try
+external Super Buttons, naming or deleting the profile, and exporting/importing the
+whole profile as a JSON file. Without the hardware, **Try
 the demo** runs it against a simulated keyboard.
 
 It talks to the keyboard directly over [WebHID](https://developer.mozilla.org/docs/Web/API/WebHID_API),
@@ -148,9 +149,20 @@ node src/cli.ts profile create main          # then: Profile (heart) LED on
 ```
 Same one-modifier limit as any other key. Unmapped, they send **nothing** while the
 heart LED is on. (Fast Key Mapping on the keyboard only applies with the heart LED
-*off*.) Codes `0x6e`–`0x73` are also accepted by the keyboard and are probably the
-other three jacks, but that's unconfirmed. To find a button's code, map candidates to
-digits (`map 0x6e 1`, …), press the button, and see which digit it types.
+*off*.)
+
+The official app has **eight** Super Button slots (K1–K8). Only the first pair is
+verified on hardware; the rest come from the app's own table:
+
+| slots | codes |
+|---|---|
+| K1, K2 (pad 1, verified) | `0x74` right, `0x75` left |
+| K3, K4 | `0x72`, `0x73` |
+| K5, K6 | `0x70`, `0x71` |
+| K7, K8 | `0x6e`, `0x6f` |
+
+To check a slot's code, map it to a digit (`map 0x72 1`), press the button, and see
+which digit it types.
 
 ### Map to a raw HID usage (escape hatch)
 When a target isn't in the `list-keys` table, write the HID usage bytes directly.
@@ -159,6 +171,26 @@ The chord encoding is `07 <modifier-usage> <key-usage>`:
 node src/cli.ts map-hid supera 07 e3 68      # ⌘(e3) + F13(68) — same as map-combo supera cmd f13
 node src/cli.ts map-hid capslock 00 00 29    # plain key, no modifier (29 = Esc)
 ```
+
+### Media and system keys
+Besides `playpause`, `nextsong`, `previoussong`, `mute`, `volumeup`, `volumedown` and
+`calc`, these come from the official app's target table: `brightnessdown`,
+`brightnessup`, `mail`, `homepage`. Brightness keys work as bare targets on a Mac,
+unlike F14/F15.
+```sh
+node src/cli.ts map scrlk brightnessdown
+node src/cli.ts map pause brightnessup
+```
+
+### Back up, restore, or share a profile
+```sh
+node src/cli.ts export main.json   # profile name + every remapped key (or omit the file for stdout)
+node src/cli.ts import main.json   # make the keyboard match it, then name the profile
+```
+The file is readable JSON: keys are hardware names (or raw codes like `0x75`), values
+are the 3-byte mapping in hex (`"supera": "07e368"` = ⌘F13). Import resets remapped
+keys the file doesn't mention, writes only keys that differ, and names the profile.
+The web app's Export/Import buttons use the same format.
 
 ### Undo / revert
 ```sh
@@ -194,6 +226,7 @@ See `src/protocol/consts.ts` and `PLAN.md`.
 ## Layout
 - `src/protocol/` — protocol constants + key/usage tables (`keys.ts` is generated).
 - `src/protocol/usage.ts` — encode/decode mapping values (chords, display names).
+- `src/profile.ts` — profile files: read, validate, and apply (CLI + web).
 - `src/client.ts` — protocol client over a pluggable async `Transport` (reads
   validated; writes implemented). Shared by the CLI and the web app.
 - `src/device.ts` — find/open the config interface via `node-hid` (CLI transport).
