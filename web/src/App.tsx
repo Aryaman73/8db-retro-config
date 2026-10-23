@@ -4,6 +4,7 @@ import { Board, ExternalButtons, isRemapped } from './Board.tsx';
 import { KeyEditor } from './KeyEditor.tsx';
 import { ProfilePanel } from './ProfilePanel.tsx';
 import { defaultUsage, hwLabel, usageLabel } from './keys.ts';
+import { countEvent } from './analytics.ts';
 import { openDemoKeyboard } from './demo.ts';
 import { REQUEST_FILTERS, isConfigInterface, openKeyboard } from './webhid.ts';
 
@@ -55,6 +56,7 @@ export default function App() {
         setProduct(dev.productName);
         await refresh(kb);
         setPhase('ready');
+        countEvent('8db-retro-config/connect', 'Connected a keyboard');
       } catch (e) {
         await dev.close().catch(() => {});
         dropConnection();
@@ -120,6 +122,7 @@ export default function App() {
     setProduct('Simulated keyboard');
     await refresh(kb);
     setPhase('ready');
+    countEvent('8db-retro-config/demo', 'Started the demo');
   }
 
   async function disconnect() {
@@ -219,7 +222,7 @@ export default function App() {
                   No keyboard? Try the demo
                 </button>
               </div>
-              <p className="hint">Everything happens in this tab. The page talks to the keyboard directly and sends nothing anywhere else.</p>
+              <p className="hint">Everything happens in this tab. The page talks to the keyboard directly, and your keys and mappings never leave it.</p>
             </>
           )}
         </section>
@@ -312,7 +315,8 @@ export default function App() {
       )}
 
       <footer className="foot muted">
-        Unofficial and reverse-engineered. Not affiliated with 8BitDo. <a href={REPO}>Source</a>
+        Unofficial and reverse-engineered. Not affiliated with 8BitDo. Anonymous visit counts via{' '}
+        <a href="https://www.goatcounter.com">GoatCounter</a>. <a href={REPO}>Source</a>
       </footer>
     </div>
   );
